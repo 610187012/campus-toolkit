@@ -1,0 +1,301 @@
+{
+  "value": "examRegistration",
+  "label": "升學考試與模擬考校內報名",
+  "kind": "optional",
+  "status": "live",
+  "description": "校內升學考試與模擬考的報名、名單與造冊工具。\n\n【學生端】\n• 開放期間勾選選考科目，可修改、取消；截止後唯讀，可下載 PDF 留存。\n• 支援必／選報與不報名原因、繳費身分與費用試算、考試地點選擇、應考服務填寫與自行封存。\n• 場次依報名起訖自動顯示未開放／開放／已截止，未開放前不可送出。\n\n【教職員】\n• 兼導師可唯讀檢視本班各場次的班級完成狀態與報名名單。\n\n【管理端】\n• 建立場次與科目、指定年級班級、設定考試日期（可多日）與報名起訖、必／選報與費用。\n• 名單統計、班級區間匯出（全部／完成／未完成）、官方報名資料檔（學測、分科測驗、英聽、術科與通用格式）。\n• 可同步系統公告與行事曆；依權限解除封存、刪除登錄、硬刪除場次（連動名單）。\n\n【家長端】\n• 家長可唯讀查看名冊綁定子女的報名資料。",
+  "href": "/admin/exam-registration",
+  "contractVersion": 1,
+  "minHostVersion": "0.558",
+  "license": "MIT",
+  "repository": "https://github.com/takan003/examRegistration",
+  "keywords": ["考試", "報名", "造冊", "家長"],
+  "firestoreIndexes": [
+    { "collection": "rosterStudents", "fields": ["academicYear", "semester", "grade"] },
+    { "collection": "rosterStudents", "fields": ["academicYear", "semester", "classCode"] }
+  ],
+  "author": {
+    "author": "張家誠",
+    "authorUrl": "https://github.com/takan003",
+    "version": "0.1.55",
+    "releasedAt": "2026-10-29"
+  },
+  "provides": { "student": true, "parent": true, "staff": true, "admin": true },
+  "defaultRoleEnabled": { "parent": false },
+  "managerPermissions": [
+    { "value": "viewRoster", "label": "查看場次與名冊" },
+    { "value": "configure", "label": "建立／編輯／刪除場次" },
+    { "value": "approve", "label": "審核報名（解除封存／刪除登錄）" },
+    { "value": "export", "label": "匯出名單" }
+  ],
+  "routes": [
+    { "kind": "page", "path": "/student/exam-registration" },
+    { "kind": "page", "path": "/parent/exam-registration" },
+    { "kind": "page", "path": "/staff/exam-registration" },
+    { "kind": "page", "path": "/admin/exam-registration" },
+    { "kind": "page", "path": "/admin/exam-registration/roster" },
+    { "kind": "api", "path": "/api/exam-registration" },
+    { "kind": "api", "path": "/api/parent/exam-registration" },
+    { "kind": "api", "path": "/api/staff/exam-registration" },
+    { "kind": "api", "path": "/api/admin/exam-registration" }
+  ],
+  "permission": { "mode": "new", "value": "examRegistration", "category": "校務資料" },
+  "rateLimits": [
+    { "key": "EXAM_REGISTRATION_LIST", "limit": 120, "windowMs": 60000 },
+    { "key": "EXAM_REGISTRATION_MUTATE", "limit": 20, "windowMs": 60000 },
+    { "key": "EXAM_REGISTRATION_ADMIN", "limit": 60, "windowMs": 60000 },
+    { "key": "EXAM_REGISTRATION_STAFF", "limit": 60, "windowMs": 60000 }
+  ],
+  "auditActions": [
+    "exam_registration_event_created",
+    "exam_registration_event_updated",
+    "exam_registration_event_deleted",
+    "exam_registration_recorded",
+    "exam_registration_withdrawn",
+    "exam_registration_archived",
+    "exam_registration_unarchived",
+    "exam_registration_registration_deleted"
+  ],
+  "dataCollections": [
+    "examEvents",
+    "examRegistrations",
+    "studentPersonalIdentity",
+    "studentPersonalInfo"
+  ],
+  "hooks": ["announcements", "calendar"],
+  "changelog": [
+    {
+      "version": "0.1.55",
+      "releasedAt": "2026-10-29",
+      "notes": [
+        "模組介紹改為分類條列（學生端、教職員、管理端、家長端）並精簡文字，市集卡片一眼可讀完整功能範圍",
+        "市集更新說明改為條列呈現，與自主學習計畫模組一致"
+      ]
+    },
+    {
+      "version": "0.1.54",
+      "releasedAt": "2026-10-22",
+      "notes": [
+        "官方報名資料檔新增「忽略身分證」勾選：勾選後缺證號的學生不再阻止匯出，其列排在試算表最上方，其餘按報名序號由小到大排序；未勾選維持原阻止行為並列出班級與姓名。"
+      ]
+    },
+    {
+      "version": "0.1.53",
+      "releasedAt": "2026-10-21",
+      "notes": [
+        "版面寬度改比照功能首頁：三身分頁所有一級區塊與「管理功能」面板統一使用主程式的 content-width（80vw、min-width 286px），與功能首頁同一把尺規。",
+        "內嵌的場次管理／名單頁在面板內改為填滿容器（新增 fill prop）；/admin 獨立使用時維持原本的 max-w-4xl 標準不變。"
+      ]
+    },
+    {
+      "version": "0.1.52",
+      "releasedAt": "2026-10-21",
+      "notes": [
+        "版面寬度統一（一頁一骨架）：三身分頁（學生／家長／教職員）所有一級區塊——標題、分隔線、按鈕列、基本功能、頁尾——統一為 max-w-4xl，與「管理功能」面板同寬，左右邊界與分隔線完全對齊，收合／展合不再跳版。",
+        "段落級文字（管理功能說明）內層限縮 max-w-2xl 控制行長；場次卡、名冊表格等結構化內容維持原生排版，於4xl下只是欄距放大。"
+      ]
+    },
+    {
+      "version": "0.1.51",
+      "releasedAt": "2026-10-21",
+      "notes": [
+        "教職員頁版面：標題與「返回功能首頁」按鈕間距拉開（mb-6），標題下顯示「兼導師班級：班級代碼」；後端失敗時也回傳 classCode，班級名稱仍可顯示。",
+        "沒有場次、沒有適用所屬班級或後端暫時取不到資料時，一律顯示「目前沒有適用的考試場次」，不再出現「請洽系統管理員」等洽辦提醒；非兼導師仍維持不顯示該區。"
+      ]
+    },
+    {
+      "version": "0.1.50",
+      "releasedAt": "2026-10-21",
+      "notes": [
+        "身分功能頁的管理面板改名為「管理功能」並改為收合／展開（details/summary＋DisclosureArrow，預設收合；帶 ?eventId= 進名單視圖時自動展開），說明文字改為「下方為此身分的基本功能。」。",
+        "三身分頁（學生／家長／教職員）的排列調整：管理功能置於上方，該身分的基本功能移到其下方。"
+      ]
+    },
+    {
+      "version": "0.1.49",
+      "releasedAt": "2026-10-21",
+      "notes": [
+        "教職員頁對非兼導師（無班級代碼）不再顯示「目前無法載入班級報名資料」提醒：此區不適用時直接不顯示（403 靜默處理），被指派管理者只看到下方的管理面板；其他載入失敗（如 500）仍會顯示錯誤訊息。"
+      ]
+    },
+    {
+      "version": "0.1.48",
+      "releasedAt": "2026-10-21",
+      "notes": [
+        "被指派的管理者改在自己的身分功能頁（學生／家長／教職員）直接使用被授權的管理功能：新增管理面板（components/manager-panel.tsx），依 session.delegatedModules 渲染、未被指派者不顯示——預設內嵌場次列表與建立／編輯／刪除（configure），帶 ?eventId= 時改顯示名單／審核／匯出（viewRoster／approve／export），不必再前往 /admin。",
+        "管理頁「查看名單」與名單頁「返回場次清單」連結改為可參數化（rosterHrefBase／listHref，預設 /admin 路徑），/admin 使用行為不變。"
+      ]
+    },
+    {
+      "version": "0.1.47",
+      "releasedAt": "2026-10-20",
+      "notes": [
+        "配合主程式「不同身分管理政策」（需主程式 0.558+）：宣告 managerPermissions 子權限（查看場次與名冊／建立編輯刪除場次／審核報名／匯出名單），管理員 API 改以 requireModulePermission 逐動作守門——管理員恆全權；教職員／家長／學生由管理員於功能模組管理頁按學期指派，僅能執行被勾選的子權限。",
+        "管理端頁面依 session 權限上下文隱藏無權限操作（建立／編輯／刪除／解除封存／匯出）。"
+      ]
+    },
+    {
+      "version": "0.1.46",
+      "releasedAt": "2026-10-20",
+      "notes": [
+        "快取壽命改讀主程式系統設定（settings.cacheTtlSeconds，省錢專區，30–300 秒）：學生可見場次與管理端名單／應對象快取不再寫死 30 秒，由超級管理員統一調整。需主程式 0.551+（提供 getCacheTtlSeconds）。"
+      ]
+    },
+    {
+      "version": "0.1.45",
+      "releasedAt": "2026-10-20",
+      "notes": [
+        "管理端省流根治：場次對象僅指定年級（無班級清單）時，名冊改以 grade in [...] 下推查詢——回傳筆數≈該年級人數而非全校（例：全校 922 人的高三場次從 922 讀降至 311 讀）。",
+        "應對象學生抽出共用 30 秒快取（tabs／統計面板／xlsx 匯出同享）：同一場次短時間內各端點只讀一次 Firestore，不再各自全量重讀。",
+        "xlsx 匯出 all/pending 從整期全校名冊改走應對象快取（同享年級/班級下推）。",
+        "module.json 宣告 rosterStudents 複合索引（academicYear+semester+grade／classCode）——安裝後於主程式 firestore.indexes.json 建立對應索引。"
+      ]
+    },
+    {
+      "version": "0.1.44",
+      "releasedAt": "2026-10-19",
+      "notes": [
+        "學生頁「必須報名」提示移除 var(--warning) 的 fallback 色值——遵守主程式 §3.5 CSS 主題套用契約條文 4（宿主保證 token 必有值，fallback 會掩蓋缺漏）。"
+      ]
+    },
+    {
+      "version": "0.1.43",
+      "releasedAt": "2026-10-19",
+      "notes": [
+        "廢止科目名額上限（capacity）機制：移除學生端 n/m 與額滿鎖定、移除送出時額滿拒絕（409）、移除管理表單名額欄位與驗證；舊資料的 capacity 欄位一律忽略。",
+        "同步移除 0.1.42 的 examEventCounters 計數器——人數聚合隨名額機制一併廢除，學生端不再有任何各科人數讀取。"
+      ]
+    },
+    {
+      "version": "0.1.42",
+      "releasedAt": "2026-10-19",
+      "notes": [
+        "大幅省流：新增 examEventCounters 場次人數計數器，學生端 n/m 改讀計數器（每場次 1 點查），額滿檢查與人數統計不再全量掃描場次登錄——讀取量與報名人數無關。",
+        "學生寫入（登錄／取消／封存）只清模組內快取、不再 bump 全站 cacheEpoch——報名高峰 30 秒快取不再被打爆；管理端名單／統計跨實例延遲上限 30 秒，匯出仍即時。",
+        "家長端綁定子女改以學號＋學期下推查詢（1 筆、約 1 讀），取代整期全校名冊全量讀取。"
+      ]
+    },
+    {
+      "version": "0.1.41",
+      "releasedAt": "2026-10-19",
+      "notes": [
+        "學生頁頂部增設「下載報名表說明」警告區（分點式），提示手機下載與封存提醒兩項修正。"
+      ]
+    },
+    {
+      "version": "0.1.40",
+      "releasedAt": "2026-10-19",
+      "notes": [
+        "說明區改為分點式排版並精簡文字。"
+      ]
+    },
+    {
+      "version": "0.1.39",
+      "releasedAt": "2026-10-19",
+      "notes": [
+        "修正手機版「下載為PDF」得到空白檔案：列印版面改以 afterprint 事件卸載（＋2 分鐘兜底），手機、電腦皆可正常下載。",
+        "封存提醒僅在開放學生自行封存且未封存時出現；承辦關閉自行封存時直接下載，不再跳出多餘提示。"
+      ]
+    },
+    {
+      "version": "0.1.38",
+      "releasedAt": "2026-10-18",
+      "notes": [
+        "修正場次清單「統計」按鈕載入失敗：延遲載入改為班級分頁後，統計面板改以 ?eventId=&stats=1 取回完整名單與統計。"
+      ]
+    },
+    {
+      "version": "0.1.37",
+      "releasedAt": "2026-10-18",
+      "notes": [
+        "管理名單依報名方式提供：自由報名只列出完成報名者（未完成／不報名不顯示）；必須報名整班全部列出（含未完成／不報名，供對帳催辦）。"
+      ]
+    },
+    {
+      "version": "0.1.36",
+      "releasedAt": "2026-10-18",
+      "notes": [
+        "名單頁嚴格省流：單班名冊只下推讀取該班名冊條目與登錄（classCode／studentClass 過濾），不再全量載入全校名冊後於記憶體過濾；班級分頁統計亦以場次對象班級下推讀取。"
+      ]
+    },
+    {
+      "version": "0.1.35",
+      "releasedAt": "2026-10-18",
+      "notes": [
+        "排序控制列移到搜尋列下一行，且改為清單顯示後（省流閘門解除）才出現。"
+      ]
+    },
+    {
+      "version": "0.1.34",
+      "releasedAt": "2026-10-18",
+      "notes": [
+        "場次清單支援排序：可選場次／考試日期／報名日期，預設由舊到新，點擊切換新到舊（反覆切換）。"
+      ]
+    },
+    {
+      "version": "0.1.33",
+      "releasedAt": "2026-10-17",
+      "notes": [
+        "宣告家長入口功能預設關閉（defaultRoleEnabled.parent=false，需主程式 0.522+）。"
+      ]
+    },
+    {
+      "version": "0.1.32",
+      "releasedAt": "2026-10-17",
+      "notes": [
+        "補上 firestoreIndexes 宣告（空陣列＝目前查詢皆不需複合索引）。"
+      ]
+    },
+    {
+      "version": "0.1.31",
+      "releasedAt": "2026-10-17",
+      "notes": [
+        "補齊模組揭露資訊：授權（MIT）、原始碼位址、作者連結、關鍵字與改版記錄。"
+      ]
+    },
+    {
+      "version": "0.1.30",
+      "releasedAt": "2026-10-17",
+      "notes": [
+        "未對應專屬官方格式的場次改以通用預設欄位匯出（科目名稱各一欄，值為 1/0 或進階選項代碼），不再誤用學測格式。"
+      ]
+    },
+    {
+      "version": "0.1.29",
+      "releasedAt": "2026-10-17",
+      "notes": [
+        "新增分科測驗官方報名資料檔格式（12 欄：報名序號、身分證、考試地區、物理、化學、數學甲、生物、歷史、地理、數學乙、公民、特殊應考需求）。"
+      ]
+    },
+    {
+      "version": "0.1.28",
+      "releasedAt": "2026-10-17",
+      "notes": [
+        "考區清單代碼與名稱改為可直接編輯。"
+      ]
+    },
+    {
+      "version": "0.1.27",
+      "releasedAt": "2026-10-17",
+      "notes": [
+        "Enter 跳入費用欄位時自動全選數值，覆寫預設 0 更快速。"
+      ]
+    },
+    {
+      "version": "0.1.26",
+      "releasedAt": "2026-10-17",
+      "notes": [
+        "選考科目 Enter 輔助：科目名稱→一般生→中低收入戶→新增空白科目並聚焦，跳過進階選項，不再誤觸送出表單。"
+      ]
+    },
+    {
+      "version": "0.1.25",
+      "releasedAt": "2026-10-16",
+      "notes": [
+        "新增家長唯讀查看名冊綁定子女的報名資料。",
+        "大學術科考試音樂／美術／體育組三場次報名合併為單一 17 欄官方檔。",
+        "新增高中英語聽力測驗第一、二次考試官方檔格式（4 欄）。"
+      ]
+    }
+  ]
+}
