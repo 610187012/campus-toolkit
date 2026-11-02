@@ -6,11 +6,13 @@ import DisclosureArrow from "@/components/DisclosureArrow";
 import { RichTextEditor } from "../../components/rich-text-editor";
 import {
   DEFAULT_SELF_DIRECTED_LEARNING_SETTINGS,
+  DOCUMENT_EXPORT_LABELS,
   MAX_MIN_APPROVED_PLANS,
   WEEKDAY_LABELS,
   openStateOf,
   reviewStateOf,
   type ClassOption,
+  type DocumentExportPlatform,
   type FlexibleSlot,
   type PeriodOption,
   type ReviewerEntry,
@@ -600,6 +602,131 @@ export default function SelfDirectedLearningSettingsPage({
           </p>
         </div>
       )}
+
+      <section className="border-themed bg-card space-y-3 rounded-lg border p-4">
+        <h2 className="text-t1 font-semibold">文件下載／匯出服務</h2>
+        <p className="text-t2 text-sm">各服務獨立開放，預設全部關閉。調整後請按「儲存設定」；啟用不代表平台憑證已設定完成。原列印功能不受影響。</p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {(Object.keys(DOCUMENT_EXPORT_LABELS) as DocumentExportPlatform[]).map((platform) => (
+            <label key={platform} className="border-themed flex items-start gap-3 rounded border p-3">
+              <input
+                type="checkbox"
+                role="switch"
+                aria-label={`提供 ${DOCUMENT_EXPORT_LABELS[platform]} 匯出`}
+                checked={settings.documentExports[platform]}
+                disabled={loading || saving}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setSettings((current) => ({
+                    ...current, documentExports: { ...current.documentExports, [platform]: checked },
+                  }));
+                }}
+              />
+              <span className="text-t1 text-sm">
+                {DOCUMENT_EXPORT_LABELS[platform]}
+                <span className="text-t3 mt-1 block text-xs">
+                  {settings.documentExports[platform] ? (platform === "word" ? "開放 .docx 下載，不需外部授權" : "開放學生匯出") : "不提供學生匯出"}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </section>
+
+      <details className="border-themed bg-card rounded-lg">
+        <summary className="text-t1 flex cursor-pointer items-center gap-2 p-4 font-medium">
+          <DisclosureArrow />
+          Google Docs／Canva 匯出：啟用準備與設定
+        </summary>
+        <div className="text-t2 space-y-4 break-words px-4 pb-4 text-sm">
+          <p>
+            以下供學校管理人員與部署維護者查閱，不是憑證輸入表單，也不會自動啟用外部服務。
+            設定須在各平台後台與網站部署環境完成；請勿把 secret、token 填入學生說明欄位或分享截圖。
+          </p>
+          <details className="border-themed bg-surface rounded-md border">
+            <summary className="text-t1 flex cursor-pointer items-center gap-2 p-3 font-medium">
+              <DisclosureArrow />
+              Google Docs：Google Cloud 與網站設定
+            </summary>
+            <ol className="list-decimal space-y-2 pb-3 pl-9 pr-3">
+              <li>
+                開啟 <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="underline">Google Cloud 憑證管理</a>，
+                選擇學校登入用的 Firebase／OAuth 所屬專案，建立或沿用「網頁應用程式」OAuth 用戶端。
+                取得結尾為 .apps.googleusercontent.com 的 Client ID；這不是 client secret。
+              </li>
+              <li>
+                在同一專案啟用 <a href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank" rel="noopener noreferrer" className="underline">Google Drive API</a>。
+                本功能使用 Drive 將 HTML 轉為 Google 文件，不必另外啟用 Google Docs API；
+                原本可以 Google 登入，不代表 Drive API 已啟用。
+              </li>
+              <li>
+                OAuth 用戶端的「已授權的 JavaScript 來源」加入實際網站 origin（協定、主機及連接埠），
+                不加頁面路徑。例如本機 http://localhost:3000；若從 http://127.0.0.1:3000
+                測試也須依 Google 規定設定該來源，兩者不視為相同來源。正式環境加入學校 HTTPS 網址。
+                此流程不需另外設定 Google callback route。
+              </li>
+              <li>
+                OAuth 同意畫面設定權限 <code className="break-all">https://www.googleapis.com/auth/drive.file</code>，
+                依 Google 規定設定受眾、發布狀態、測試使用者與必要驗證。
+                學校 Workspace 若封鎖第三方應用程式，須由管理員允許此用戶端及權限。
+              </li>
+              <li>
+                在本機環境檔或正式部署平台設定 <code>NEXT_PUBLIC_GOOGLE_CLIENT_ID</code>，
+                值為上述 Client ID。不需 Google client secret，也不儲存 refresh token。
+                本機修改後重啟 dev server；正式環境設定後重新建置部署，公開變數才會更新到瀏覽器程式。
+              </li>
+              <li>
+                用學生帳號匯出一份合成測試計畫，確認授權後可開啟可編輯文件。
+                若提示 API 未啟用，檢查是否啟用在正確專案，並等待數分鐘生效；
+                權限不足需重新授權，空間不足需清理 Drive，學校限制則洽 Workspace 管理員。
+              </li>
+            </ol>
+          </details>
+          <details className="border-themed bg-surface rounded-md border">
+            <summary className="text-t1 flex cursor-pointer items-center gap-2 p-3 font-medium">
+              <DisclosureArrow />
+              Canva：開發者應用程式與回呼設定
+            </summary>
+            <ol className="list-decimal space-y-2 pb-3 pl-9 pr-3">
+              <li>
+                在 <a href="https://www.canva.com/developers/" target="_blank" rel="noopener noreferrer" className="underline">Canva Developer Portal</a> 建立應用程式，
+                於 Outside Canva 啟用 Canva REST APIs（不是 Canva MCP）。
+                若要供學生各自授權使用，採 Public 並依 Canva 規定完成測試人員設定、審核與發布；
+                Private 模式有 Enterprise 團隊限制，不等同一般校內網站。
+              </li>
+              <li>
+                在 Credentials 取得 Client ID 並產生 Client secret，Scopes 只選
+                <code className="break-all"> design:content:write</code>（design:content 的 Write）。
+                secret 只供後端使用，不可貼到聊天、網頁表單、前端程式或提交到版本庫。
+              </li>
+              <li>
+                Redirect URLs 加入下列本機回呼網址，須與環境變數完全一致：
+                <code className="mt-1 block break-all">http://127.0.0.1:3000/api/student/self-directed-learning/canva/callback</code>
+                請從 http://127.0.0.1:3000 開啟網站並重新登入，不要從 localhost
+                開始後回到 127.0.0.1，兩者登入 cookie 不共用。
+              </li>
+              <li>
+                在網站後端環境設定 <code>CANVA_CLIENT_ID</code>、<code>CANVA_CLIENT_SECRET</code>、
+                <code>CANVA_REDIRECT_URI</code>。三者都不可加 NEXT_PUBLIC_ 前綴。
+                宿主 <code>SESSION_SECRET</code> 須至少 32 字元，供短效授權 cookie 加密；
+                不需為本功能更換既有有效金鑰。修改後重啟本機或重新部署。
+              </li>
+              <li>
+                正式環境將回呼改為學校 HTTPS 網址加上
+                <code className="break-all"> /api/student/self-directed-learning/canva/callback</code>，
+                同步更新 Canva 後台與 CANVA_REDIRECT_URI。授權起點與回呼必須同 origin；
+                Google 登入與 Google Docs 的來源允許設定須另外處理。
+              </li>
+              <li>
+                用具備應用程式測試資格的 Canva 帳號操作合成計畫：學生同意後授權，
+                回到原視窗等待 DOCX 匯入，再開啟 Canva 設計。
+                若視窗被擋請允許彈出視窗；拒絕存取時確認 scope、測試資格、發布狀態與帳號限制。
+                字型、表格及分頁由 Canva 轉換，請實際檢查可編輯內容與版面。
+              </li>
+            </ol>
+          </details>
+        </div>
+      </details>
 
       <details className="border-themed bg-card rounded-lg" open>
         <summary className="text-t1 flex cursor-pointer items-center gap-2 p-4 font-medium">

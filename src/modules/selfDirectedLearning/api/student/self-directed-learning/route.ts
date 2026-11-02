@@ -419,15 +419,11 @@ export async function POST(request: NextRequest) {
     }
 
     const fullWeeks = await getFullWeeks();
-    // 與學校活動衝堂的週次不提供撰寫（送審時不列入必填）
-    const weekSchedule = await getWeekSchedule(student.grade, student.classCode);
-    const blockedWeeks = weekSchedule.filter((week) => week.blocked).map((week) => week.week);
     const parsed = parsePlanDraft(
       body?.draft,
       {
         ...settings,
         fullWeeks,
-        blockedWeeks,
         venueEditable: settings.venueEditable,
         venueOptions: settings.venues,
       },
@@ -465,7 +461,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: true, plan: result.plan },
+      {
+        success: true,
+        plan: result.plan,
+        ...(parsed.notice ? { message: parsed.notice } : {}),
+      },
       { headers: noStore }
     );
   } catch (error) {

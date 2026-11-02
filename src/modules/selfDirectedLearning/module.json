@@ -13,8 +13,8 @@
   "author": {
     "author": "takan003",
     "authorUrl": "https://github.com/takan003",
-    "version": "0.0.118",
-    "releasedAt": "2026-10-29"
+    "version": "0.0.129",
+    "releasedAt": "2026-11-02"
   },
   "provides": { "student": true, "parent": true, "staff": true, "admin": true },
   "managerPermissions": [
@@ -29,6 +29,9 @@
     { "kind": "page", "path": "/student/self-directed-learning" },
     { "kind": "page", "path": "/student/self-directed-learning/print" },
     { "kind": "api", "path": "/api/student/self-directed-learning" },
+    { "kind": "api", "path": "/api/student/self-directed-learning/exports" },
+    { "kind": "api", "path": "/api/student/self-directed-learning/canva" },
+    { "kind": "api", "path": "/api/student/self-directed-learning/canva/callback" },
     { "kind": "page", "path": "/staff/self-directed-learning" },
     { "kind": "api", "path": "/api/staff/self-directed-learning" },
     { "kind": "page", "path": "/parent/self-directed-learning" },
@@ -37,6 +40,7 @@
   "permission": { "mode": "new", "value": "selfDirectedLearning", "category": "校務資料" },
   "icon": "selfDirectedLearning",
   "rateLimits": [
+    { "key": "SELF_DIRECTED_LEARNING_CANVA", "limit": 90, "windowMs": 60000 },
     { "key": "SELF_DIRECTED_LEARNING_LIST", "limit": 120, "windowMs": 60000 },
     { "key": "SELF_DIRECTED_LEARNING_STUDENT", "limit": 20, "windowMs": 60000 },
     { "key": "SELF_DIRECTED_LEARNING_STAFF", "limit": 60, "windowMs": 60000 },
@@ -63,6 +67,93 @@
   ],
   "hooks": ["announcements", "calendar"],
   "changelog": [
+    {
+      "version": "0.0.129",
+      "releasedAt": "2026-11-02",
+      "notes": [
+        "移除管理規則頁的「上線驗收與資料注意事項」說明區塊，保留 Google Docs／Canva 設定說明、服務開關與學生端資料傳送同意流程。"
+      ]
+    },
+    {
+      "version": "0.0.128",
+      "releasedAt": "2026-11-02",
+      "notes": [
+        "Google Docs 新增四種文件風格與簡短錯誤提示；完成 Word（.docx）下載，支援未儲存內容及兩種成果排版，下載請求統一驗證開關，連線失敗可手動重試。",
+        "管理規則新增 Google Docs、Canva、Word 獨立開關，全部預設關閉，並提供平台啟用說明；新增 Canva OAuth／PKCE 與文件匯入流程，但實際授權仍待 Canva 無效 Client ID 問題排除。",
+        "57 項合成回歸測試、Lint、型別檢查與模組掃描通過；Word 使用者端下載及 Canva 實際授權／匯入尚待驗收，建議維持關閉至學校完成測試。"
+      ]
+    },
+    {
+      "version": "0.0.127",
+      "releasedAt": "2026-11-02",
+      "notes": [
+        "完成 Word（.docx）下載，沿用四種文件風格、成果分開式／融入式與未儲存內容快照；不需 Google／Canva 授權，不另存匯出資料。",
+        "Word 下載受管理人員獨立開關、學生身分、模組開關、CSRF 與限流保護；伺服器即時產生原生 OOXML 文件並提供明確下載與失敗提示。"
+      ]
+    },
+    {
+      "version": "0.0.126",
+      "releasedAt": "2026-11-02",
+      "notes": [
+        "管理規則新增 Google Docs、Canva、Word 獨立匯出開關，預設全部關閉；學生選單隱藏關閉服務，匯出前核對學校設定，Canva API 與回呼同步限制。Word 尚未完成，開關不會提前提供下載；列印功能不受影響。"
+      ]
+    },
+    {
+      "version": "0.0.125",
+      "releasedAt": "2026-11-02",
+      "notes": [
+        "修正 Next.js 將 loopback 網址正規化為 localhost 時誤擋 Canva 匯出：以實際 Host／代理來源標頭核對設定，保留主機、連接埠與協定檢查；設定失敗不再持續顯示檢查中。"
+      ]
+    },
+    {
+      "version": "0.0.124",
+      "releasedAt": "2026-11-02",
+      "notes": [
+        "管理規則頁新增 Google Docs／Canva 啟用設定說明，包含平台準備、權限、環境變數、本機與正式回呼、常見問題及個資驗收清單，預設收合供管理人員查閱。"
+      ]
+    },
+    {
+      "version": "0.0.123",
+      "releasedAt": "2026-11-02",
+      "notes": [
+        "新增 Canva 官方 OAuth／PKCE 授權與文件匯入，學生同意後將目前計畫、未儲存成果與心得建立為可編輯設計，保留四種文件風格與原 Google Docs 功能。",
+        "憑證僅於後端使用，授權資料存於短效加密 HttpOnly cookie，不持久化學生文件或 refresh token；提供匯入進度、取消授權與明確失敗提示。"
+      ]
+    },
+    {
+      "version": "0.0.122",
+      "releasedAt": "2026-11-02",
+      "notes": [
+        "Google Docs 匯出依拒絕原因顯示簡短中文處理提示，區分 Drive API 未啟用、空間不足、權限、學校政策及配額問題，不顯示原始長訊息或錯誤代碼。",
+        "Google Docs 匯出新增文件風格選單：基本款、清爽正式、黑白簡約、作品集，保留相同可編輯內容與成果分開式／融入式；基本款不加裝飾配色。"
+      ]
+    },
+    {
+      "version": "0.0.121",
+      "releasedAt": "2026-11-02",
+      "notes": [
+        "新增匯出格式／平台下拉選單，第一階段提供 Google Docs；Canva 與 Word 顯示為後續階段，原列印功能保留。",
+        "學生確認資料傳送並授權自己的 Google 帳號後，建立可編輯文件副本，包含計畫、逐週成果及心得與尚未儲存的內容；不公開分享、不回寫校內資料。",
+        "採 drive.file 最小權限、token 僅供本次使用，提供取消授權、權限不足、網路及逾時的明確錯誤，附回歸測試與 Google Cloud 設定說明。"
+      ]
+    },
+    {
+      "version": "0.0.120",
+      "releasedAt": "2026-10-31",
+      "notes": [
+        "學生「發想新計畫」改為自由發想：可安排 6–21 週、週次依序第 1～N 週，不綁學校行事曆、不檢核衝堂，也不再顯示日期與節次",
+        "送出審核時才依現行學校規範自動補齊或調整週數（全學期形式補足學期總週數、彈性形式補足下限並以學期總週數為上限），再檢核每週學習安排與場地",
+        "計畫詳情與列印預覽同步移除日期／節次欄位；管理端設定與成果紀錄開放時間維持不變"
+      ]
+    },
+    {
+      "version": "0.0.119",
+      "releasedAt": "2026-10-31",
+      "notes": [
+        "家長端自主學習頁面改與學生端相同版型：加入系統名稱／學校／學期抬頭、頁首頁尾的返回功能首頁與登出按鈕、實施說明卡片、廣告與版權區",
+        "計畫內容改用一致的卡片樣式，「查看計畫與撰寫成果」改為收合區並以週次／學習安排／場地表格呈現，審查意見與維護、未開放檢視等空狀態同步套用相同樣式"
+      ]
+    },
     {
       "version": "0.0.118",
       "releasedAt": "2026-10-29",

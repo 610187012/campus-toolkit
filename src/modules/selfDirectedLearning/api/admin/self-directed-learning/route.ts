@@ -224,7 +224,7 @@ export async function POST(request: NextRequest) {
       role: session.role,
       action: "self_directed_learning_settings_updated",
       ip: getClientIp(request),
-      details: `更新管理規則（總開關、送審時間、週數形式與審核設定；同步公告：${
+      details: `更新管理規則（總開關、送審時間、週數形式與審核設定；Google Docs：${settings.documentExports.googleDocs ? "開" : "關"}、Canva：${settings.documentExports.canva ? "開" : "關"}、Word：${settings.documentExports.word ? "開" : "關"}；同步公告：${
         settings.publishAnnouncement ? "是" : "否"
       }、同步行事曆：${settings.publishCalendar ? "是" : "否"}）`,
     });

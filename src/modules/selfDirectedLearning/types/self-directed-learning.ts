@@ -87,6 +87,9 @@ export interface FlexibleSlot {
  *  全學期形式的週數由程式依學校行事曆（學期起訖）自動判斷，不開放人工設定；
  *  僅以防濫用為由保留伺服器硬上限 */
 export const MAX_PLAN_WEEKS = 104;
+/** 自由發想的週數範圍（不綁學校行事曆；送審時再依學校規範自動調整） */
+export const FREE_DRAFT_MIN_WEEKS = 6;
+export const FREE_DRAFT_MAX_WEEKS = 21;
 
 /** 文件匣件數上限的預設值（管理端可自行調整；無硬上限） */
 export const DEFAULT_MAX_DOCUMENT_PLANS = 20;
@@ -126,9 +129,14 @@ export const MAINTENANCE_HINT =
   "本功能正在維護資料，期間暫停填報與檢視，開放時間將另行公告。";
 
 /** selfDirectedLearningSettings/global 單文件設定 */
+export const DOCUMENT_EXPORT_LABELS = { googleDocs: "Google Docs", canva: "Canva", word: "Word" } as const;
+export type DocumentExportPlatform = keyof typeof DOCUMENT_EXPORT_LABELS;
+export type DocumentExportServices = Record<DocumentExportPlatform, boolean>;
+
 export interface SelfDirectedLearningSettings {
   /** 功能總開關（false＝關閉維護中：學生／教職員／家長只見維護說明，寫入 API 一律擋下） */
   enabled: boolean;
+  documentExports: DocumentExportServices;
   /** 送審期間開始（epoch ms；null＝尚未設定；僅限制送出審核，草稿與正式建立不受限） */
   openAt: number | null;
   /** 送審期間截止（epoch ms；null＝尚未設定；僅限制送出審核） */
@@ -170,6 +178,7 @@ export interface SelfDirectedLearningSettings {
 
 export const DEFAULT_SELF_DIRECTED_LEARNING_SETTINGS: SelfDirectedLearningSettings = {
   enabled: true,
+  documentExports: { googleDocs: false, canva: false, word: false },
   openAt: null,
   closeAt: null,
   reviewStartAt: null,
@@ -235,6 +244,8 @@ function asReviewerStudents(value: unknown): ReviewerStudentRef[] {
 /** 讀 Firestore 原始資料後正規化（防欄位缺漏／型別損毀） */
 export function normalizeSettings(raw: unknown): SelfDirectedLearningSettings {
   const source = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const exports = source.documentExports && typeof source.documentExports === "object"
+    ? source.documentExports as Record<string, unknown> : {};
   const slots: FlexibleSlot[] = Array.isArray(source.slots)
     ? source.slots
         .map((item): FlexibleSlot | null => {
@@ -295,6 +306,11 @@ export function normalizeSettings(raw: unknown): SelfDirectedLearningSettings {
       ? source.minApprovedPlans
       : DEFAULT_SELF_DIRECTED_LEARNING_SETTINGS.minApprovedPlans;
   return {
+    documentExports: {
+      googleDocs: exports.googleDocs === true,
+      canva: exports.canva === true,
+      word: exports.word === true,
+    },
     enabled:
       typeof source.enabled === "boolean"
         ? source.enabled
@@ -344,6 +360,14 @@ export type ParseResult = { ok: true; value: SelfDirectedLearningSettings } | { 
 export function parseSettingsInput(raw: unknown): ParseResult {
   if (!raw || typeof raw !== "object") return { ok: false, message: "請求內容格式錯誤" };
   const body = raw as Record<string, unknown>;
+  if ("documentExports" in body) {
+    const services = body.documentExports;
+    if (!services || typeof services !== "object" || Array.isArray(services) ||
+      Object.keys(DOCUMENT_EXPORT_LABELS).some((key) =>
+        !(key in services) || typeof (services as Record<string, unknown>)[key] !== "boolean")) {
+      return { ok: false, message: "文件匯出服務開關格式錯誤" };
+    }
+  }
   const openAt = asEpoch(body.openAt);
   const closeAt = asEpoch(body.closeAt);
   const reviewStartAt = asEpoch(body.reviewStartAt);
@@ -1066,17 +1090,24 @@ export function stripHtmlToText(input: string): string {
 }
 
 export type PlanParseResult =
-  | { ok: true; value: Omit<SelfDirectedLearningPlan, "id" | "period" | "studentUid" | "studentName" | "grade" | "classCode" | "className" | "status" | "deletedAt" | "submittedAt" | "firstSubmittedAt" | "selfApprovedAt" | "updatedAt"> }
+  | {
+      ok: true;
+      value: Omit<SelfDirectedLearningPlan, "id" | "period" | "studentUid" | "studentName" | "grade" | "classCode" | "className" | "status" | "deletedAt" | "submittedAt" | "firstSubmittedAt" | "selfApprovedAt" | "updatedAt">;
+      /** 送審時依學校規範自動調整週數的提示（草稿不提供） */
+      notice?: string;
+    }
   | { ok: false; message: string };
 
-/** 學生計畫草稿輸入驗證（送審與草稿共用；草稿寬鬆、送審才套週數形式與每週必填） */
+/**
+ * 學生計畫草稿輸入驗證。
+ * - 發想階段：6–21 週，週次依序 1～N，不綁學校行事曆、不檢核衝堂。
+ * - 送審階段：先依現行學校規範自動補齊／調整週數，再檢查每週必填與場地。
+ */
 export function parsePlanDraft(
   raw: unknown,
   rules: Pick<SelfDirectedLearningSettings, "weekMode" | "minWeeks"> & {
-    /** 程式判斷的學期總週數（兩種形式的填寫上限；null＝學校尚未設定起訖） */
+    /** 程式判斷的學期總週數（送審時作為週數上限參考；null＝學校尚未設定起訖） */
     fullWeeks: number | null;
-    /** 與學校活動衝堂、不提供撰寫的週次（送審時不列入必填） */
-    blockedWeeks?: number[];
     /** 是否開放學生自行輸入場地名稱（預設 true；false＝只能從 `venueOptions` 選擇） */
     venueEditable?: boolean;
     /** 學校開放的固定場域清單（`venueEditable` 為 false 時送審據此驗證） */
@@ -1108,85 +1139,92 @@ export function parsePlanDraft(
   }
   const learningGoals = goalsPlain ? capRichHtmlLength(goalsHtml, 6000) : "";
 
-  if (!Array.isArray(body.weeks) || body.weeks.length < 1) {
-    return { ok: false, message: "請至少填寫一週的課程安排" };
+  if (!Array.isArray(body.weeks) || body.weeks.length < FREE_DRAFT_MIN_WEEKS) {
+    return { ok: false, message: `請至少安排 ${FREE_DRAFT_MIN_WEEKS} 週的課程內容` };
   }
-  if (body.weeks.length > MAX_PLAN_WEEKS) {
-    return { ok: false, message: `週數不得超過 ${MAX_PLAN_WEEKS} 週` };
-  }
-  // 兩種形式的填寫上限皆為程式判斷的學期總週數
-  if (action === "submit" && rules.fullWeeks !== null && body.weeks.length > rules.fullWeeks) {
+  if (body.weeks.length > FREE_DRAFT_MAX_WEEKS) {
     return {
       ok: false,
-      message: `週數不得超過程式判斷的學期總週數 ${rules.fullWeeks} 週（目前 ${body.weeks.length} 週）`,
+      message: `最多可安排 ${FREE_DRAFT_MAX_WEEKS} 週（目前 ${body.weeks.length} 週）`,
     };
   }
-  if (action === "submit" && rules.weekMode === "full") {
-    if (rules.fullWeeks === null) {
-      return {
-        ok: false,
-        message: "學校尚未設定上課日／學期起訖，暫無法判斷全學期週數——請改用彈性形式，或請學校至「學校基本設定 → 學期起訖設定」填寫上課日起訖",
-      };
-    }
-    if (body.weeks.length !== rules.fullWeeks) {
-      return {
-        ok: false,
-        message: `全學期形式須填寫全部 ${rules.fullWeeks} 週（目前 ${body.weeks.length} 週）`,
-      };
-    }
-  }
-  if (action === "submit" && rules.weekMode === "flexible" && body.weeks.length < rules.minWeeks) {
-    return {
-      ok: false,
-      message: `彈性形式至少須填寫 ${rules.minWeeks} 週的學校下限（目前 ${body.weeks.length} 週）`,
-    };
-  }
+
   const weeks: PlanWeek[] = [];
-  const seen = new Set<number>();
-  const blockedWeeks = new Set(rules.blockedWeeks ?? []);
   const venueEditable = rules.venueEditable !== false;
   const venueOptions = new Set(rules.venueOptions ?? []);
-  for (const item of body.weeks) {
+  // 週次依送出的順序重新編號為第 1～N 週（發想階段不綁學校行事曆）
+  for (let index = 0; index < body.weeks.length; index += 1) {
+    const item = body.weeks[index];
     if (!item || typeof item !== "object") return { ok: false, message: "每週安排格式錯誤" };
     const week = item as Record<string, unknown>;
-    const weekNo = typeof week.week === "number" ? week.week : NaN;
-    if (!Number.isInteger(weekNo) || weekNo < 1 || weekNo > MAX_PLAN_WEEKS) {
-      return { ok: false, message: "週次編號不合法" };
-    }
-    if (seen.has(weekNo)) return { ok: false, message: `第 ${weekNo} 週重複` };
-    seen.add(weekNo);
+    const weekNo = index + 1;
     const rawContent = typeof week.content === "string" ? week.content : "";
     // 富文本存檔前先淨化；純文字長度以「實際可見文字」計算
     const sanitizedContent = sanitizeRichHtml(rawContent);
     const plainContent = stripHtmlToText(sanitizedContent).trim();
-    const content = plainContent ? capRichHtmlLength(sanitizedContent, 6000) : "";
-    const venue = typeof week.venue === "string" ? week.venue.trim().slice(0, 120) : "";
-    // 與學校活動衝堂的週次不提供撰寫，送審時也不列入必填
-    const blocked = blockedWeeks.has(weekNo);
-    // 草稿可留白（進度可分次完成）；送審時每一週的學習安排與場地都必填
-    if (action === "submit" && !blocked && !plainContent) {
-      return { ok: false, message: `第 ${weekNo} 週未填寫學習安排` };
-    }
-    if (!blocked && plainContent.length > 600) {
+    if (plainContent.length > 600) {
       return {
         ok: false,
         message: `第 ${weekNo} 週學習安排超過 600 字上限（目前 ${plainContent.length} 字）`,
       };
     }
-    if (action === "submit" && !blocked && !venue) {
-      return { ok: false, message: `第 ${weekNo} 週未填寫場地` };
-    }
-    // 未開放自行輸入時，場地必須是學校開放的固定場域之一
-    if (action === "submit" && !blocked && !venueEditable && !venueOptions.has(venue)) {
-      return {
-        ok: false,
-        message: `第 ${weekNo} 週場地「${venue}」不在學校開放的場域清單，請重新選擇`,
-      };
-    }
+    const content = plainContent ? capRichHtmlLength(sanitizedContent, 6000) : "";
+    const venue = typeof week.venue === "string" ? week.venue.trim().slice(0, 120) : "";
     const timing: PlanTiming = isTiming(week.timing) ? week.timing : "flexible";
     weeks.push({ week: weekNo, content, venue, timing });
   }
-  weeks.sort((a, b) => a.week - b.week);
+
+  let notice: string | undefined;
+  if (action === "submit") {
+    // 依現行學校規範自動調整週數：全學期＝全部週數；彈性＝下限至學期總週數之間
+    let target = weeks.length;
+    if (rules.weekMode === "full") {
+      if (rules.fullWeeks === null) {
+        return {
+          ok: false,
+          message:
+            "學校尚未設定上課日／學期起訖，暫無法判斷全學期週數——請洽學校至「學校基本設定 → 學期起訖設定」填寫",
+        };
+      }
+      target = rules.fullWeeks;
+    } else {
+      target = Math.max(target, rules.minWeeks);
+      if (rules.fullWeeks !== null) target = Math.min(target, rules.fullWeeks);
+    }
+    target = Math.min(
+      Math.max(target, FREE_DRAFT_MIN_WEEKS),
+      FREE_DRAFT_MAX_WEEKS
+    );
+    if (target > weeks.length) {
+      const last = weeks[weeks.length - 1];
+      while (weeks.length < target) {
+        weeks.push({ ...last, week: weeks.length + 1 });
+      }
+      notice = `已依學校規範自動補齊至 ${target} 週（新增週次沿用最後一週的安排，送審後仍可再修改）`;
+    } else if (target < weeks.length) {
+      weeks.length = target;
+      notice = `已依學校規範自動調整為 ${target} 週`;
+    }
+  }
+
+  if (action === "submit") {
+    for (const week of weeks) {
+      if (!stripHtmlToText(week.content).trim()) {
+        return { ok: false, message: `第 ${week.week} 週未填寫學習安排` };
+      }
+      if (!week.venue) {
+        return { ok: false, message: `第 ${week.week} 週未填寫場地` };
+      }
+      // 未開放自行輸入時，場地必須是學校開放的固定場域之一
+      if (!venueEditable && !venueOptions.has(week.venue)) {
+        return {
+          ok: false,
+          message: `第 ${week.week} 週場地「${week.venue}」不在學校開放的場域清單，請重新選擇`,
+        };
+      }
+    }
+  }
+
   // 成果紀錄與學習反思心得不在草稿表單內（由「查看內容」於計畫通過後、時間到才填寫）
   return {
     ok: true,
@@ -1200,6 +1238,7 @@ export function parsePlanDraft(
       reflection: "",
       parentVisible: true,
     },
+    ...(notice ? { notice } : {}),
   };
 }
 

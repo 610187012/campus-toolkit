@@ -6,12 +6,15 @@ import AdSense from "@/components/AdSense";
 import Copyright from "@/components/Copyright";
 import Toast, { type ToastMessage } from "@/components/Toast";
 import DisclosureArrow from "@/components/DisclosureArrow";
+import DocumentExportControls from "../../components/document-export-controls";
 import { RichTextContent, RichTextEditor } from "../../components/rich-text-editor";
 import { fetchSettings } from "@/lib/settings-client";
 import { logout } from "@/lib/session";
 import { Settings, defaultSettings } from "@/types/settings";
 import {
   DEFAULT_SELF_DIRECTED_LEARNING_SETTINGS,
+  FREE_DRAFT_MAX_WEEKS,
+  FREE_DRAFT_MIN_WEEKS,
   MAINTENANCE_HINT,
   MAINTENANCE_TITLE,
   PLAN_STATUS_LABELS,
@@ -20,7 +23,6 @@ import {
   PRINT_PREVIEW_READY,
   STUDY_GROUPS,
   TRASH_RETENTION_DAYS,
-  WEEKDAY_LABELS,
   openStateOf,
   stripHtmlToText,
   type PlanStatus,
@@ -32,7 +34,6 @@ import {
   type RecordWindow,
   type SelfDirectedLearningPlan,
   type SelfDirectedLearningSettings,
-  type WeekSchedule,
   isFormalPlan,
 } from "../../types/self-directed-learning";
 
@@ -88,13 +89,6 @@ function formatDateTime(epoch: number | null): string {
   return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** 逐週表格的短日期（`YYYY-MM-DD` → `M/D`） */
-function monthDayText(date: string): string {
-  const [, month, day] = date.split("-");
-  if (!month || !day) return date;
-  return `${Number(month)}/${Number(day)}`;
-}
-
 /** 短日期時間（`M/D HH:mm`；成果紀錄開放時間顯示用） */
 function formatShortDateTime(epoch: number): string {
   if (!epoch) return "—";
@@ -121,36 +115,6 @@ function statusClass(status: PlanStatus): string {
   if (status === "returned") return "text-danger";
   if (status === "submitted") return "text-warning";
   return "text-t3";
-}
-
-/**
- * 依設定補齊草稿週數：
- * 全學期形式＝補到程式判斷的學期總週數；彈性形式＝夾在下限與總週數上限之間。
- */
-function fitWeeks(
-  weeks: PlanWeek[],
-  settings: SelfDirectedLearningSettings,
-  fullWeeks: number | null
-): PlanWeek[] {
-  const target =
-    settings.weekMode === "full" && fullWeeks !== null
-      ? fullWeeks
-      : fullWeeks !== null
-        ? Math.min(Math.max(weeks.length, settings.minWeeks), fullWeeks)
-        : Math.max(weeks.length, settings.minWeeks);
-  const next = weeks.slice(0, target);
-  while (next.length < target) {
-    next.push({ week: next.length + 1, content: "", venue: "", timing: "flexible" });
-  }
-  return next.map((week, index) => ({ ...week, week: index + 1 }));
-}
-
-/** 依指定週次建立（或沿用）逐週安排；用於彈性形式的起迄週次區間 */
-function weeksForNumbers(numbers: number[], existing: PlanWeek[]): PlanWeek[] {
-  return numbers.map((weekNo) => {
-    const previous = existing.find((week) => week.week === weekNo);
-    return previous ?? { week: weekNo, content: "", venue: "", timing: "flexible" };
-  });
 }
 
 function FolderTabIcon() {
@@ -265,10 +229,6 @@ export default function StudentSelfDirectedLearningPage() {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   /** 總開關關閉：只顯示維護說明 */
   const [maintenance, setMaintenance] = useState(false);
-  /** 全學期形式的須填週數（由學期起訖自動判斷；null＝學校尚未設定起訖） */
-  const [fullWeeks, setFullWeeks] = useState<number | null>(null);
-  /** 逐週彈性學習時間（日期／節次）與學校活動衝堂 */
-  const [weekSchedule, setWeekSchedule] = useState<WeekSchedule[]>([]);
   /** 執行成果紀錄／學習反思心得開放資訊（逐週開放時間與截止日） */
   const [recordWindow, setRecordWindow] = useState<RecordWindow>({
     deadlineAt: null,
@@ -300,11 +260,6 @@ export default function StudentSelfDirectedLearningPage() {
   const [customVenueWeeks, setCustomVenueWeeks] = useState<Set<number>>(new Set());
   /** 我的計畫分頁：文件匣／草稿匣／垃圾桶 */
   const [planTab, setPlanTab] = useState<PlanTab>("documents");
-  /** 彈性形式的週次區間（可寫週次；full 模式不使用） */
-  const [rangeStart, setRangeStart] = useState<number | null>(null);
-  const [rangeEnd, setRangeEnd] = useState<number | null>(null);
-  /** 週次顛倒時等待使用者確認調換 */
-  const [rangeSwap, setRangeSwap] = useState<{ start: number; end: number } | null>(null);
   /** 正在假性刪除／還原的計畫 id */
   const [planBusy, setPlanBusy] = useState<string | null>(null);
   /** 準備抽回（取消送審）的計畫 */
@@ -370,43 +325,6 @@ export default function StudentSelfDirectedLearningPage() {
   /** 目前展開「查看計畫與撰寫成果」的正式計畫（浮動按鈕只作用在這一份） */
   const recordPlan =
     formalPlans.find((plan) => plan.period === currentPeriod && openDetailPlans[plan.id]) ?? null;
-  /** 可寫週次（有設定節次時：該週至少一個時段未衝堂；未設定節次時：全部視為可寫） */
-  const availableWeekNumbers = useMemo(() => {
-    if (weekSchedule.length > 0) {
-      return weekSchedule.filter((week) => week.writable !== false).map((week) => week.week);
-    }
-    const total = fullWeeks ?? Math.max(settings.minWeeks, 1);
-    return Array.from({ length: total }, (_, index) => index + 1);
-  }, [weekSchedule, fullWeeks, settings.minWeeks]);
-  /** 目前選取區間內的可寫週次與數量 */
-  const rangeWeekNumbers =
-    rangeStart !== null && rangeEnd !== null
-      ? availableWeekNumbers.filter((week) => week >= rangeStart && week <= rangeEnd)
-      : [];
-  const rangeCount = rangeWeekNumbers.length;
-  /** 可選的開始週次：扣掉「從這裡開始不足下限」的週次（總數本身不足時全列，並顯示警示） */
-  const startOptionNumbers = useMemo(() => {
-    const enough = availableWeekNumbers.filter(
-      (week, index) => availableWeekNumbers.length - index >= settings.minWeeks
-    );
-    return enough.length > 0 ? enough : availableWeekNumbers;
-  }, [availableWeekNumbers, settings.minWeeks]);
-  const rangeValid =
-    settings.weekMode !== "flexible" ||
-    (rangeStart !== null &&
-      rangeEnd !== null &&
-      rangeStart <= rangeEnd &&
-      rangeCount >= settings.minWeeks);
-  const rangeSwapCount = rangeSwap
-    ? availableWeekNumbers.filter(
-        (week) => week >= rangeSwap.start && week <= rangeSwap.end
-      ).length
-    : 0;
-  /** 週次 → 該週彈性學習時間與衝堂資訊 */
-  const weekScheduleByNo = useMemo(
-    () => new Map(weekSchedule.map((row) => [row.week, row])),
-    [weekSchedule]
-  );
   /** 提升為正式前的必填檢核：列出尚未填寫的欄位（空陣列＝可提升） */
   const promoteIssuesOf = (
     plan: Pick<SelfDirectedLearningPlan, "topic" | "studyGroup" | "learningGoals" | "weeks">
@@ -418,24 +336,13 @@ export default function StudentSelfDirectedLearningPage() {
     if (plan.weeks.length === 0) {
       issues.push("逐週課程安排");
     } else {
-      if (settings.weekMode === "flexible" && plan.weeks.length < settings.minWeeks) {
-        issues.push(
-          `逐週課程安排（至少 ${settings.minWeeks} 週，目前 ${plan.weeks.length} 週）`
-        );
-      }
-      if (settings.weekMode === "full" && fullWeeks !== null && plan.weeks.length !== fullWeeks) {
-        issues.push(`逐週課程安排（須填滿 ${fullWeeks} 週，目前 ${plan.weeks.length} 週）`);
-      }
-      const writableWeeks = plan.weeks.filter(
-        (week) => weekScheduleByNo.get(week.week)?.writable !== false
-      );
-      const missingContent = writableWeeks
+      const missingContent = plan.weeks
         .filter((week) => !stripHtmlToText(week.content).trim())
         .map((week) => week.week);
       if (missingContent.length > 0) {
         issues.push(`第 ${missingContent.join("、")} 週的學習內容`);
       }
-      const missingVenue = writableWeeks
+      const missingVenue = plan.weeks
         .filter((week) => !week.venue.trim())
         .map((week) => week.week);
       if (missingVenue.length > 0) {
@@ -448,43 +355,6 @@ export default function StudentSelfDirectedLearningPage() {
   const previewWindowRef = useRef<Window | null>(null);
   const printPayloadRef = useRef<PrintPreviewPayload | null>(null);
 
-  /** 套用彈性形式的起迄週次（只保留區間內可寫的週次） */
-  const applyWeekRange = (start: number, end: number) => {
-    if (start > end) return;
-    const numbers = availableWeekNumbers.filter((week) => week >= start && week <= end);
-    setRangeStart(start);
-    setRangeEnd(end);
-    setDraft((prev) => ({
-      ...prev,
-      weeks: weeksForNumbers(numbers, prev.weeks),
-    }));
-  };
-
-  /** 新計畫的預設區間：從第一個可寫週次開始，取到滿足下限週數為止 */
-  const defaultRange = (): { start: number; end: number; numbers: number[] } | null => {
-    if (availableWeekNumbers.length === 0) return null;
-    const start = availableWeekNumbers[0];
-    const count = Math.min(Math.max(settings.minWeeks, 1), availableWeekNumbers.length);
-    const end = availableWeekNumbers[count - 1];
-    return {
-      start,
-      end,
-      numbers: availableWeekNumbers.filter((week) => week >= start && week <= end),
-    };
-  };
-
-  /** 起迄週次變更：順序顛倒時先跳出確認，確認後才調換 */
-  const requestRangeChange = (source: "start" | "end", value: number) => {
-    const start = source === "start" ? value : rangeStart;
-    const end = source === "end" ? value : rangeEnd;
-    if (start === null || end === null) return;
-    if (start > end) {
-      setRangeSwap({ start: Math.min(start, end), end: Math.max(start, end) });
-      return;
-    }
-    applyWeekRange(start, end);
-  };
-
   const load = useCallback(async () => {
     try {
       const response = await fetch("/api/student/self-directed-learning", { cache: "no-store" });
@@ -494,10 +364,7 @@ export default function StudentSelfDirectedLearningPage() {
         return;
       }
       const nextSettings = data.settings as SelfDirectedLearningSettings;
-      const nextFullWeeks = typeof data.fullWeeks === "number" ? data.fullWeeks : null;
       setSettings(nextSettings);
-      setFullWeeks(nextFullWeeks);
-      setWeekSchedule(Array.isArray(data.weekSchedule) ? (data.weekSchedule as WeekSchedule[]) : []);
       setRecordWindow(
         data.recordWindow && typeof data.recordWindow === "object"
           ? {
@@ -590,6 +457,33 @@ export default function StudentSelfDirectedLearningPage() {
     }));
   };
 
+  /** 調整週數（6–21 週，依序第 1～N 週；減少時保留前面週次內容） */
+  const setWeekCount = (count: number) => {
+    const target = Math.min(
+      Math.max(count, FREE_DRAFT_MIN_WEEKS),
+      FREE_DRAFT_MAX_WEEKS
+    );
+    setDraft((prev) => {
+      const weeks = prev.weeks
+        .slice(0, target)
+        .map((week, index) => ({ ...week, week: index + 1 }));
+      while (weeks.length < target) {
+        weeks.push({
+          week: weeks.length + 1,
+          content: "",
+          venue: "",
+          timing: "flexible" as PlanTiming,
+        });
+      }
+      return { ...prev, weeks };
+    });
+    setCustomVenueWeeks((prev) => {
+      const next = new Set<number>();
+      for (const weekNo of prev) if (weekNo <= target) next.add(weekNo);
+      return next;
+    });
+  };
+
   /** 把本週的學習安排與場地完整複製到下一週 */
   const copyWeekToNext = (index: number) => {
     const source = draft.weeks[index];
@@ -630,22 +524,8 @@ export default function StudentSelfDirectedLearningPage() {
     setEditingPlanId(null);
     setCustomStudyGroup(false);
     setCustomVenueWeeks(new Set());
-    if (settings.weekMode === "flexible") {
-      const range = defaultRange();
-      if (range) {
-        setRangeStart(range.start);
-        setRangeEnd(range.end);
-        setDraft({ ...EMPTY_DRAFT, weeks: weeksForNumbers(range.numbers, []) });
-      } else {
-        setRangeStart(null);
-        setRangeEnd(null);
-        setDraft({ ...EMPTY_DRAFT, weeks: [] });
-      }
-    } else {
-      setRangeStart(null);
-      setRangeEnd(null);
-      setDraft({ ...EMPTY_DRAFT, weeks: fitWeeks(emptyWeeks(1), settings, fullWeeks) });
-    }
+    // 自由發想：固定從 6 週開始（可用下方「週數」調整 6–21 週），不綁學校行事曆
+    setDraft({ ...EMPTY_DRAFT, weeks: emptyWeeks(FREE_DRAFT_MIN_WEEKS) });
     setFormOpen(true);
     revealForm();
   };
@@ -666,60 +546,24 @@ export default function StudentSelfDirectedLearningPage() {
           )
         : new Set()
     );
-    if (settings.weekMode === "flexible") {
-      const stored = plan.weeks;
-      if (stored.length === 0) {
-        const range = defaultRange();
-        setRangeStart(range?.start ?? null);
-        setRangeEnd(range?.end ?? null);
-        setDraft({
-          topic: plan.topic,
-          studyGroup: plan.studyGroup,
-          advisor: plan.advisor,
-          learningGoals: plan.learningGoals,
-          weeks: range ? weeksForNumbers(range.numbers, []) : [],
-        });
-      } else {
-        const spanStart = Math.min(...stored.map((week) => week.week));
-        const spanEnd = Math.max(...stored.map((week) => week.week));
-        const numbers = availableWeekNumbers.filter(
-          (week) => week >= spanStart && week <= spanEnd
-        );
-        if (numbers.length > 0) {
-          setRangeStart(numbers[0]);
-          setRangeEnd(numbers[numbers.length - 1]);
-          setDraft({
-            topic: plan.topic,
-            studyGroup: plan.studyGroup,
-            advisor: plan.advisor,
-            learningGoals: plan.learningGoals,
-            weeks: weeksForNumbers(numbers, stored),
-          });
-        } else {
-          // 既有資料的週次都不在目前可寫清單（例如後續新增了學校活動）：保留原內容，讓使用者自行調整
-          setRangeStart(spanStart);
-          setRangeEnd(spanEnd);
-          setDraft({
-            topic: plan.topic,
-            studyGroup: plan.studyGroup,
-            advisor: plan.advisor,
-            learningGoals: plan.learningGoals,
-            weeks: stored,
-          });
-        }
-      }
-    } else {
-      setRangeStart(null);
-      setRangeEnd(null);
-      const weeks = plan.weeks.length ? plan.weeks : emptyWeeks(1);
-      setDraft({
-        topic: plan.topic,
-        studyGroup: plan.studyGroup,
-        advisor: plan.advisor,
-        learningGoals: plan.learningGoals,
-        weeks: fitWeeks(weeks, settings, fullWeeks),
+    // 既有草稿一律重新編號為第 1～N 週，並補到至少 6 週（不綁學校週次）
+    const stored = [...plan.weeks].sort((a, b) => a.week - b.week).slice(0, FREE_DRAFT_MAX_WEEKS);
+    const weeks = stored.map((week, index) => ({ ...week, week: index + 1 }));
+    while (weeks.length < FREE_DRAFT_MIN_WEEKS) {
+      weeks.push({
+        week: weeks.length + 1,
+        content: "",
+        venue: "",
+        timing: "flexible" as PlanTiming,
       });
     }
+    setDraft({
+      topic: plan.topic,
+      studyGroup: plan.studyGroup,
+      advisor: plan.advisor,
+      learningGoals: plan.learningGoals,
+      weeks,
+    });
     setFormOpen(true);
     revealForm();
   };
@@ -734,7 +578,10 @@ export default function StudentSelfDirectedLearningPage() {
    * - 不帶參數＝目前撰寫中的草稿（含尚未儲存的變更）
    * - 帶入計畫＝已通過的計畫內容＋執行成果紀錄＋學習反思心得
    */
-  const openPrintPreview = (plan?: SelfDirectedLearningPlan) => {
+  const buildPreviewPayload = (
+    plan?: SelfDirectedLearningPlan,
+    includeUnsavedRecords = false
+  ): PrintPreviewPayload => {
     const weeks = plan ? plan.weeks : draft.weeks;
     const payload: PrintPreviewPayload = {
       period: plan?.period || currentPeriod,
@@ -744,31 +591,29 @@ export default function StudentSelfDirectedLearningPage() {
       studyGroup: plan ? plan.studyGroup : draft.studyGroup,
       advisor: plan ? plan.advisor : draft.advisor,
       learningGoals: plan ? plan.learningGoals : draft.learningGoals,
-      reflection: plan?.reflection ?? "",
+      reflection: plan && includeUnsavedRecords
+        ? reflectionDrafts[plan.id] ?? plan.reflection
+        : plan?.reflection ?? "",
       source: plan ? "approved" : "draft",
       formalByStudent: Boolean(plan?.selfApprovedAt && plan.status !== "approved"),
       layout: printLayout,
       generatedAt: Date.now(),
-      weeks: weeks.map((week) => {
-        const scheduleRow = weekScheduleByNo.get(week.week);
-        const slots = scheduleRow?.slots ?? [];
-        return {
-          week: week.week,
-          timing: week.timing,
-          content: week.content,
-          venue: week.venue,
-          slots: slots.map((slot) => ({
-            date: slot.date,
-            day: slot.day,
-            periods: [...slot.periods],
-            blockedBy: slot.blockedBy,
-          })),
-          blocked: scheduleRow?.blocked ?? false,
-          record:
-            plan?.executionRecords.find((item) => item.week === week.week)?.note ?? "",
-        };
-      }),
+      weeks: weeks.map((week) => ({
+        week: week.week,
+        timing: week.timing,
+        content: week.content,
+        venue: week.venue,
+        slots: [],
+        blocked: false,
+        record: (plan && includeUnsavedRecords ? recordDrafts[plan.id]?.[week.week] : undefined)
+          ?? plan?.executionRecords.find((item) => item.week === week.week)?.note ?? "",
+      })),
     };
+    return payload;
+  };
+
+  const openPrintPreview = (plan?: SelfDirectedLearningPlan) => {
+    const payload = buildPreviewPayload(plan);
     printPayloadRef.current = payload;
     const preview = window.open("/student/self-directed-learning/print", "_blank");
     if (!preview) {
@@ -794,7 +639,10 @@ export default function StudentSelfDirectedLearningPage() {
       }
       const saved = data.plan as SelfDirectedLearningPlan;
       setEditingPlanId(saved.id);
-      setToast({ kind: "success", text: action === "submit" ? "已送出審核" : "草稿已儲存" });
+      setToast({
+        kind: "success",
+        text: data.message || (action === "submit" ? "已送出審核" : "草稿已儲存"),
+      });
       if (action === "submit") {
         setFormOpen(false);
         setEditingPlanId(null);
@@ -1027,7 +875,6 @@ export default function StudentSelfDirectedLearningPage() {
     withinWindow &&
     !locked &&
     saving === null &&
-    rangeValid &&
     !otherSubmittedPlan &&
     !otherEverSubmittedPlan &&
     !otherApprovedPlan &&
@@ -1036,6 +883,7 @@ export default function StudentSelfDirectedLearningPage() {
 
   const formActionButtons = (
     <>
+      <DocumentExportControls services={settings.documentExports} getPayload={() => buildPreviewPayload(undefined, true)} onToast={setToast} />
       <button
         type="button"
         className="btn-theme px-6 py-3 text-base"
@@ -1269,6 +1117,7 @@ export default function StudentSelfDirectedLearningPage() {
     const showRecordActions = isFormalPlan(plan) && plan.period === currentPeriod;
     const recordActionButtons = (target: SelfDirectedLearningPlan) => (
       <div className="mt-2 flex flex-wrap justify-end gap-2">
+        <DocumentExportControls services={settings.documentExports} getPayload={() => buildPreviewPayload(target, true)} onToast={setToast} />
         <button
           type="button"
           className="btn-theme rounded px-4 py-2 text-xs"
@@ -1544,13 +1393,6 @@ export default function StudentSelfDirectedLearningPage() {
               </thead>
               {plan.weeks.map((week) => {
                 const weekReview = review?.weekNotes?.find((item) => item.week === week.week);
-                // 日期／節次由目前學期的節次行程推算，僅適用於本學期的計畫
-                const showSchedule = plan.period === currentPeriod;
-                const slots = showSchedule ? weekScheduleByNo.get(week.week)?.slots ?? [] : [];
-                const dateText = slots
-                  .map((slot) => `${monthDayText(slot.date)} ${WEEKDAY_LABELS[slot.day - 1]}`)
-                  .join("、");
-                const periodText = slots.flatMap((slot) => slot.periods).join("、");
                 // 執行成果紀錄：計畫通過後，該週規劃時間過了才開放，並受成果撰寫截止時間限制
                 const info = recordInfoOf(plan);
                 const weekOpen = info.weekOpen(week.week);
@@ -1571,12 +1413,6 @@ export default function StudentSelfDirectedLearningPage() {
                         <div className="text-t3 whitespace-nowrap">
                           {TIMING_SHORT_LABELS[week.timing] ?? PLAN_TIMING_LABELS[week.timing]}
                         </div>
-                        {showSchedule && (
-                          <>
-                            <div className="text-t2 whitespace-nowrap">{dateText || "—"}</div>
-                            <div className="text-t2 whitespace-nowrap">{periodText || "—"}</div>
-                          </>
-                        )}
                       </td>
                       <td className="border border-themed px-2 py-2 align-top">
                         <RichTextContent html={week.content} />
@@ -2168,88 +2004,37 @@ export default function StudentSelfDirectedLearningPage() {
                 <span className="bg-primary" style={{ width: "0.25rem", height: "1rem" }} />
                 <h3 className="text-t1 text-sm font-semibold">逐週課程安排</h3>
               </div>
-              {settings.weekMode === "flexible" ? (
-                <div className="flex flex-wrap items-end gap-3">
-                  <label className="text-t2 block space-y-1 text-xs">
-                    <span>開始週次</span>
-                    <select
-                      className="input-theme rounded px-3 py-2 text-sm"
-                      value={rangeStart ?? ""}
-                      disabled={locked || availableWeekNumbers.length === 0}
-                      onChange={(event) => requestRangeChange("start", Number(event.target.value))}
-                    >
-                      {startOptionNumbers.map((week) => (
-                        <option key={week} value={week}>
-                          第 {week} 週
-                        </option>
-                      ))}
-                      {rangeStart !== null && !startOptionNumbers.includes(rangeStart) && (
-                        <option value={rangeStart}>第 {rangeStart} 週（原填寫）</option>
-                      )}
-                    </select>
-                  </label>
-                  <span className="text-t3 pb-2 text-sm">～</span>
-                  <label className="text-t2 block space-y-1 text-xs">
-                    <span>結束週次</span>
-                    <select
-                      className="input-theme rounded px-3 py-2 text-sm"
-                      value={rangeEnd ?? ""}
-                      disabled={locked || availableWeekNumbers.length === 0}
-                      onChange={(event) => requestRangeChange("end", Number(event.target.value))}
-                    >
-                      {availableWeekNumbers
-                        .filter((week) => rangeStart === null || week >= rangeStart)
-                        .map((week) => (
-                          <option key={week} value={week}>
-                            第 {week} 週
-                          </option>
-                        ))}
-                      {rangeEnd !== null &&
-                        !(
-                          availableWeekNumbers.includes(rangeEnd) &&
-                          (rangeStart === null || rangeEnd >= rangeStart)
-                        ) && (
-                          <option value={rangeEnd}>第 {rangeEnd} 週（原填寫）</option>
-                        )}
-                    </select>
-                  </label>
-                  <p
-                    className={`pb-2 text-xs ${
-                      rangeCount < settings.minWeeks ? "text-danger" : "text-t3"
-                    }`}
-                  >
-                    可寫 {rangeCount} 週（下限 {settings.minWeeks} 週）
-                  </p>
-                </div>
-              ) : (
-                <p className="text-t2 text-sm">
-                  {fullWeeks !== null
-                    ? `全學期 ${fullWeeks} 週（空白週數都須填寫；學校活動衝堂週次不列入）`
-                    : "全學期形式：學校尚未設定上課日／學期起訖，暫無法判斷週數"}
-                </p>
-              )}
+              <label className="text-t2 block space-y-1 text-xs">
+                <span>週數</span>
+                <select
+                  className="input-theme rounded px-3 py-2 text-sm"
+                  value={draft.weeks.length}
+                  disabled={locked}
+                  onChange={(event) => setWeekCount(Number(event.target.value))}
+                  aria-label="計畫週數"
+                >
+                  {Array.from(
+                    { length: FREE_DRAFT_MAX_WEEKS - FREE_DRAFT_MIN_WEEKS + 1 },
+                    (_, index) => FREE_DRAFT_MIN_WEEKS + index
+                  ).map((count) => (
+                    <option key={count} value={count}>
+                      {count} 週
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
-            {settings.weekMode === "flexible" &&
-              (availableWeekNumbers.length === 0 ? (
-                <p className="text-danger text-xs">
-                  目前沒有可寫週次，請確認彈性學習節次與學校活動設定。
-                </p>
-              ) : rangeCount < settings.minWeeks ? (
-                <p className="text-danger text-xs">
-                  此區間只有 {rangeCount} 個可寫週次，未達下限 {settings.minWeeks} 週；請調整開始／結束週次（剩餘週次不足的地方不能當開始週次）。
-                </p>
-              ) : (
-                <p className="text-t3 text-xs">
-                  已選 {rangeCount} 個可寫週次；送出審核前仍需填寫每一週的學習安排與場地。
-                </p>
-              ))}
+            <p className="text-t3 text-xs">
+              自由發想：可安排 {FREE_DRAFT_MIN_WEEKS}–{FREE_DRAFT_MAX_WEEKS} 週，週次依序為第
+              1～N 週，不綁學校行事曆、也不檢核衝堂；送出審核時才依學校現行規範自動調整週數。
+            </p>
 
             <ol className="text-t3 list-decimal space-y-1 pl-5 text-xs">
-              <li>週次日期依學校學期起訖與彈性學習節次推算。</li>
-              <li>與學校活動衝堂的週次會標示活動名稱，不提供撰寫，也不列入必填。</li>
+              <li>週次只是第 1～N 週，不對應學期第幾週，也不顯示日期／節次。</li>
+              <li>送出審核時依學校規範自動補齊或調整週數，並檢查每週的學習安排與場地。</li>
               <li>
-                課餘時間另行處理；場地
+                場地
                 {venueEditable
                   ? "可從學校開放的場域清單選擇，或選「其他」自行輸入。"
                   : settings.venues.length > 0
@@ -2271,7 +2056,6 @@ export default function StudentSelfDirectedLearningPage() {
                       style={{ width: "7rem" }}
                     >
                       <span className="block">週次</span>
-                      <span className="block">日期／節次</span>
                     </th>
                     <th scope="col" className="align-top px-2 py-2 font-medium">
                       學習安排與場地
@@ -2282,26 +2066,13 @@ export default function StudentSelfDirectedLearningPage() {
                   {draft.weeks.length === 0 && (
                     <tr>
                       <td colSpan={2} className="text-t3 px-3 py-6 text-center text-sm">
-                        目前沒有可寫週次，請調整開始／結束週次。
+                        請選擇週數以建立逐週安排。
                       </td>
                     </tr>
                   )}
                   {draft.weeks.map((week, index) => {
-                    const scheduleRow = weekScheduleByNo.get(week.week);
-                    const slots = scheduleRow?.slots ?? [];
-                    const blocked = scheduleRow?.blocked ?? false;
                     const nextWeek = draft.weeks[index + 1];
-                    const nextBlocked = nextWeek
-                      ? weekScheduleByNo.get(nextWeek.week)?.blocked ?? false
-                      : false;
-                    const canCopyDown = Boolean(nextWeek) && !blocked && !nextBlocked;
-                    const conflictNames = [
-                      ...new Set(
-                        slots
-                          .map((slot) => slot.blockedBy)
-                          .filter((name): name is string => Boolean(name))
-                      ),
-                    ];
+                    const canCopyDown = Boolean(nextWeek);
                     return (
                       <tr key={week.week} className="border-themed border-b last:border-0 align-top">
                         <td
@@ -2309,32 +2080,6 @@ export default function StudentSelfDirectedLearningPage() {
                           style={{ width: "7rem", position: "relative" }}
                         >
                           <div className="text-t1 font-medium">第 {week.week} 週</div>
-                          {slots.length === 0 ? (
-                            <div className="text-t3 mt-1 text-xs">—</div>
-                          ) : (
-                            slots.map((slot) => (
-                              <div
-                                key={`${slot.date}-${slot.day}`}
-                                className="text-t2 mt-1 text-xs"
-                              >
-                                <div>
-                                  {monthDayText(slot.date)} {WEEKDAY_LABELS[slot.day - 1]}
-                                </div>
-                                <div className={slot.blockedBy ? "text-danger" : ""}>
-                                  {slot.periods.length > 0 ? (
-                                    slot.periods.map((period) => (
-                                      <div key={period}>{period}</div>
-                                    ))
-                                  ) : (
-                                    <div>—</div>
-                                  )}
-                                  {slot.blockedBy && (
-                                    <span className="text-danger block">{slot.blockedBy}</span>
-                                  )}
-                                </div>
-                              </div>
-                            ))
-                          )}
                           {canCopyDown && (
                             <button
                               type="button"
@@ -2367,23 +2112,7 @@ export default function StudentSelfDirectedLearningPage() {
                             </button>
                           )}
                         </td>
-                        {blocked ? (
-                          <td className="align-top px-2 py-3">
-                            <p className="text-danger text-sm font-medium">
-                              {conflictNames.join("、") || "學校活動"}
-                            </p>
-                            <p className="text-t3 mt-1 text-xs">
-                              本週彈性學習時間為學校活動，不提供撰寫（不列入必填）。
-                            </p>
-                            {week.content && (
-                              <div className="text-t3 mt-1 text-xs">
-                                <p>原內容：</p>
-                                <RichTextContent html={week.content} className="text-t3 text-xs" />
-                              </div>
-                            )}
-                          </td>
-                        ) : (
-                          <td className="align-top px-2 py-3" style={{ minWidth: "28rem" }}>
+                        <td className="align-top px-2 py-3" style={{ minWidth: "28rem" }}>
                             <div className="space-y-2">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-t3 text-xs">場地</span>
@@ -2466,7 +2195,6 @@ export default function StudentSelfDirectedLearningPage() {
                               />
                             </div>
                           </td>
-                        )}
                       </tr>
                     );
                   })}
@@ -2480,50 +2208,6 @@ export default function StudentSelfDirectedLearningPage() {
             </div>
           </div>
         </section>
-      )}
-
-      {rangeSwap && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-4"
-          style={{ backgroundColor: "color-mix(in srgb, var(--bg) 75%, transparent)" }}
-          role="alertdialog"
-          aria-modal="true"
-          aria-label="週次順序確認"
-        >
-          <div className="border-themed bg-card w-full max-w-md rounded-lg border p-5 shadow-lg">
-            <p className="text-t1 text-base font-semibold">開始與結束週次相反</p>
-            <p className="text-t2 mt-2 text-sm">
-              開始週次晚於結束週次。是否自動調換為「第 {rangeSwap.start} 週 ～ 第 {rangeSwap.end} 週」？
-            </p>
-            <p
-              className={`mt-1 text-xs ${
-                rangeSwapCount < settings.minWeeks ? "text-danger" : "text-t3"
-              }`}
-            >
-              調換後可寫 {rangeSwapCount} 週（下限 {settings.minWeeks} 週）
-              {rangeSwapCount < settings.minWeeks ? "，仍不足下限，送出審核會先被擋下。" : "。"}
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                className="btn-theme px-4 py-2 text-sm"
-                onClick={() => setRangeSwap(null)}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className="btn-primary px-4 py-2 text-sm"
-                onClick={() => {
-                  applyWeekRange(rangeSwap.start, rangeSwap.end);
-                  setRangeSwap(null);
-                }}
-              >
-                確認調換
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {withdrawTarget && (

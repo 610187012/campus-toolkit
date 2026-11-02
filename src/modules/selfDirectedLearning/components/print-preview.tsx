@@ -54,9 +54,7 @@ function WeekInfo({ week }: { week: PrintPreviewWeek }) {
       <div className="sdl-print-timing">
         {TIMING_SHORT_LABELS[week.timing] ?? week.timing}
       </div>
-      {week.slots.length === 0 ? (
-        <div className="sdl-print-slots">—</div>
-      ) : (
+      {week.slots.length > 0 &&
         week.slots.map((slot) => (
           <div key={`${slot.date}-${slot.day}`} className="sdl-print-slots">
             <div>
@@ -67,8 +65,7 @@ function WeekInfo({ week }: { week: PrintPreviewWeek }) {
               {slot.blockedBy && <span>（{slot.blockedBy}）</span>}
             </div>
           </div>
-        ))
-      )}
+        ))}
     </>
   );
 }
@@ -292,7 +289,7 @@ export function PrintPreviewSheet({ payload }: { payload: PrintPreviewPayload })
         <thead>
           <tr>
             <th scope="col" style={{ width: "22%" }}>
-              週次／日期／節次
+              週次
             </th>
             <th scope="col">學習安排</th>
             <th scope="col" style={{ width: "16%" }}>
