@@ -1,0 +1,294 @@
+{
+  "value": "identityTaxInquiry",
+  "label": "註冊身分與財稅查調",
+  "kind": "optional",
+  "status": "live",
+  "description": "每學期註冊身分確認與必要時的財稅查調作業。\n\n【學生端】\n• 於學校開放期間確認本學期註冊身分別（一般生、原住民、低收入戶、中低收入戶、身心障礙等）。\n• 需要財稅查調時，依對象填寫父、母、本人或監護人的身分證字號，不收集查調對象姓名。\n• 每次送出確認均須重新同意個人資料授權；可先存草稿（不需同意），截止前可修改，截止後唯讀。\n\n【教職員】\n• 兼導師查看本班註冊身分確認進度與名冊。\n• 具財稅查調權限者可更新查調狀態（待查調／已查調／免查調）與備註。\n\n【管理端】\n• 設定學期開放起訖、身分別選項、需查調身分別、是否必填父母身分證字號與實施說明。\n• 查看全校確認進度與統計，匯出查調名冊（含父母、本人與監護人身分證字號）。\n\n【家長端】\n• 家長可唯讀查看子女本學期的註冊身分確認結果（身分證字號遮蔽顯示）。",
+  "href": "/admin/identity-tax-inquiry",
+  "contractVersion": 1,
+  "minHostVersion": "0.558",
+  "license": "MIT",
+  "repository": "https://github.com/takan003/identityTaxInquiry",
+  "keywords": ["註冊身分", "財稅查調", "低收入戶", "中低收入戶", "原住民", "身心障礙"],
+  "author": {
+    "author": "takan003",
+    "authorUrl": "https://github.com/takan003",
+    "version": "0.1.31",
+    "releasedAt": "2026-11-02"
+  },
+  "provides": { "student": true, "parent": true, "staff": true, "admin": true },
+  "managerPermissions": [
+    { "value": "configure", "label": "管理規則（開放期間、身分別選項、查調條件、實施說明）" },
+    { "value": "viewRecords", "label": "查看註冊身分確認名冊" },
+    { "value": "taxInquiry", "label": "財稅查調作業（更新查調狀態與備註）" },
+    { "value": "export", "label": "匯出查調名冊（含父母身分證字號）" }
+  ],
+  "routes": [
+    { "kind": "page", "path": "/admin/identity-tax-inquiry" },
+    { "kind": "api", "path": "/api/admin/identity-tax-inquiry" },
+    { "kind": "page", "path": "/student/identity-tax-inquiry" },
+    { "kind": "api", "path": "/api/student/identity-tax-inquiry" },
+    { "kind": "page", "path": "/staff/identity-tax-inquiry" },
+    { "kind": "api", "path": "/api/staff/identity-tax-inquiry" },
+    { "kind": "page", "path": "/parent/identity-tax-inquiry" },
+    { "kind": "api", "path": "/api/parent/identity-tax-inquiry" }
+  ],
+  "permission": { "mode": "new", "value": "identityTaxInquiry", "category": "校務資料" },
+  "icon": "identityTaxInquiry",
+  "firestoreIndexes": [
+    { "collection": "rosterStudents", "fields": ["academicYear", "semester", "classCode"] },
+    { "collection": "identityTaxInquiryRecords", "fields": ["period", "classCode"] }
+  ],
+  "rateLimits": [
+    { "key": "IDENTITY_TAX_INQUIRY_LIST", "limit": 120, "windowMs": 60000 },
+    { "key": "IDENTITY_TAX_INQUIRY_STUDENT", "limit": 30, "windowMs": 60000 },
+    { "key": "IDENTITY_TAX_INQUIRY_STAFF", "limit": 60, "windowMs": 60000 },
+    { "key": "IDENTITY_TAX_INQUIRY_ADMIN", "limit": 60, "windowMs": 60000 }
+  ],
+  "auditActions": [
+    "identity_tax_inquiry_settings_updated",
+    "identity_tax_inquiry_record_saved",
+    "identity_tax_inquiry_record_confirmed",
+    "identity_tax_inquiry_tax_updated"
+  ],
+  "dataCollections": [
+    "identityTaxInquirySettings",
+    "identityTaxInquiryRecords",
+    "rosterStudents"
+  ],
+  "hooks": [],
+  "changelog": [
+    {
+      "version": "0.1.31",
+      "releasedAt": "2026-11-02",
+      "notes": [
+        "財稅查調不再收集對象姓名，家長檢視及 CSV 同步調整，保留學生名冊姓名。",
+        "每次送出確認均須重新同意個人資料授權，記錄版本與同意時間；草稿不需同意。",
+        "修正實施說明編輯器提示語：聚焦即隱藏，避免中文組字時重疊；空白失焦後恢復，提示文字不攔截點擊。"
+      ]
+    },
+    {
+      "version": "0.1.30",
+      "releasedAt": "2026-11-02",
+      "notes": [
+        "財稅查調不再收集對象姓名；驗證、家長檢視與 CSV 同步僅使用證號，保留學生名冊姓名。",
+        "每次送出確認均須重新閱讀並勾選個人資料授權，後端檢查告知版本並記錄同意時間；草稿不需同意。",
+        "新增授權、查調證號、舊資料相容與 CSV 回歸測試，補充授權範本依據及學校上線前確認事項。"
+      ]
+    },
+    {
+      "version": "0.1.29",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "移除文字欄位與標題重複的 placeholder；身分證字號欄改顯示範例「例：A123456789」。"
+      ]
+    },
+    {
+      "version": "0.1.28",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "手機版身分別欄位調整：文字欄位改為整列顯示且輸入框至少 10rem，下拉選單至少 6rem，避免身分證字號被壓縮。"
+      ]
+    },
+    {
+      "version": "0.1.27",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "查調對象用語調整：「父母（法定代理人）雙方」、「監護人（法定代理人無法行使親權）」，CSV 同步。"
+      ]
+    },
+    {
+      "version": "0.1.26",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "查調對象新增「監護人（法定代理人無法行使）」：填監護人姓名與身分證字號；名冊、CSV、家長端與教職員端同步支援。"
+      ]
+    },
+    {
+      "version": "0.1.25",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "查調對象「父或母一方」涵蓋亡故情形：文字改為「父或母一方（離異或亡故）」，驗證與提示同步調整。"
+      ]
+    },
+    {
+      "version": "0.1.24",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "學生端進階選項只顯示項目名稱，不再顯示項目代碼（代碼仍保留於管理端設定與資料中）。"
+      ]
+    },
+    {
+      "version": "0.1.23",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "學生端：勾選需查調的身分別時才顯示「財稅查調資料」區塊；標記文字改為「（需查調財稅資料）」。"
+      ]
+    },
+    {
+      "version": "0.1.22",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "學生端身分別改為原則上一行顯示（標籤與進階選項同列，必要時自動換行），並移除「與同組擇一」提示。"
+      ]
+    },
+    {
+      "version": "0.1.21",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "進階選項的選項清單改為逐列「項目代碼＋項目名稱」單行輸入，可新增／刪除選項；舊資料自動轉換（代碼空白、名稱為原值）。"
+      ]
+    },
+    {
+      "version": "0.1.20",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "身分別卡片的表單元件加大：互斥群組、金額、項目說明與進階選項輸入框改為 px-3 py-2 text-sm。"
+      ]
+    },
+    {
+      "version": "0.1.19",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "身分別欄位重新排列：第1行開放勾選（危險色）與互斥群組、第2行優待性質與金額、第3行項目說明；「優待方式」更名為「優待性質」。"
+      ]
+    },
+    {
+      "version": "0.1.18",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "每個身分別新增優待設定：優待方式（減免／補助二擇一）、金額（正整數）、項目說明（單行）。"
+      ]
+    },
+    {
+      "version": "0.1.17",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "統一四處標題為 36px 粗體：啟用本功能、確認開放時間、確認截止時間、實施說明。"
+      ]
+    },
+    {
+      "version": "0.1.16",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "標題尺寸調整：管理規則 46px；啟用本功能、實施說明、身分別選項、候選區統一 36px 粗體。"
+      ]
+    },
+    {
+      "version": "0.1.15",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "再放大三個標題：管理規則 36px、啟用本功能 26px、實施說明 26px，皆為粗體。"
+      ]
+    },
+    {
+      "version": "0.1.14",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "實施說明編輯器加大：預設高度 6rem→12rem、字級改為 text-base，仍可手動拖曳調整大小。"
+      ]
+    },
+    {
+      "version": "0.1.13",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "管理端標題字體放大 50% 並改為粗體（管理規則、確認進度、確認名冊、實施說明、身分別選項、候選區）。"
+      ]
+    },
+    {
+      "version": "0.1.12",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "實施說明移到身分別選項卡片之上（仍在卡片之外），方便先設定說明再編輯選項。"
+      ]
+    },
+    {
+      "version": "0.1.11",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "實施說明改用模組內建的所見即所得編輯器（不依賴主程式元件），可正常上架與掛載。"
+      ]
+    },
+    {
+      "version": "0.1.10",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "身分別卡片前方加上順位編號；實施說明改為所見即所得編輯器，學生／教職員／家長端以富文本呈現。"
+      ]
+    },
+    {
+      "version": "0.1.9",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "管理端將「身分別選項」包成獨立卡片，讓實施說明明顯位於該卡片之外。"
+      ]
+    },
+    {
+      "version": "0.1.8",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "管理端新增「候選區」：取消「開放勾選」的身分別會集中到下方儲存設定之後，可重新勾選回到主清單。"
+      ]
+    },
+    {
+      "version": "0.1.7",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "管理端儲存設定時，取消「開放勾選」的身分別會自動排到清單最後，其餘順序不變。"
+      ]
+    },
+    {
+      "version": "0.1.6",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "管理規則「啟用本功能」標題字體放大 50%（14px → 21px）。"
+      ]
+    },
+    {
+      "version": "0.1.5",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "管理規則卡片內新增上方「儲存設定」按鈕，長表單不必捲到最下方即可儲存。"
+      ]
+    },
+    {
+      "version": "0.1.4",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "管理端「管理規則」卡片改為可收合（預設收合），並固定為頁面第一張卡片；管理員與被指派的管理人員皆適用。"
+      ]
+    },
+    {
+      "version": "0.1.3",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "管理端進階選項的選項清單加上標籤與範例提示，避免與「實施說明」多行輸入框混淆。"
+      ]
+    },
+    {
+      "version": "0.1.2",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "管理端頁面內容改為 content-width（80vw），與其他模組頁面一致。"
+      ]
+    },
+    {
+      "version": "0.1.1",
+      "releasedAt": "2026-10-30",
+      "notes": [
+        "身分別改為管理端可增刪改：名稱、顯示順序、開放勾選、互斥群組（低收入戶與中低收入戶同組，僅能擇一）。",
+        "每個身分別可設定進階選項（下拉單選、勾選、文字，可設必填），例如障礙程度、住宿生、公費別與核准文號。",
+        "財稅查調改為每個身分別各自設定；查調對象分父母雙方／離異一方／本人（已婚），並依對象驗證證號。"
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "releasedAt": "2026-10-29",
+      "notes": [
+        "新模組：每學期註冊身分確認（原住民、低收入戶、中低收入戶、身心障礙等）與必要時的財稅查調",
+        "學生可填寫父母姓名與身分證字號供查調；教職員可更新查調狀態，管理端可設定規則並匯出查調名冊",
+        "四種身分（學生、教職員、家長、管理員）皆有功能入口"
+      ]
+    }
+  ]
+}
