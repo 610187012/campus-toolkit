@@ -20,6 +20,7 @@
     "module:check": "node scripts/module-check.mjs",
     "module:contract-test": "node scripts/test-module-contract.mjs",
     "module:sign": "node scripts/module-sign.mjs",
+    "module:signature-test": "node scripts/test-module-signature.mjs",
     "version:bump": "node scripts/version.js"
   },
   "keywords": [],

@@ -20,6 +20,8 @@ interface MarketModuleEntry {
   repoUrl?: string;
   downloadUrl?: string;
   checksumSha256?: string;
+  signature?: string;
+  publicKey?: string;
   category?: string;
   tags?: string[];
   releaseNotes?: string[];
@@ -200,6 +202,8 @@ export default function ModuleMarketPage() {
           id: module.id,
           downloadUrl: module.downloadUrl,
           checksumSha256: module.checksumSha256,
+          signature: module.signature,
+          publicKey: module.publicKey,
         }),
       });
 

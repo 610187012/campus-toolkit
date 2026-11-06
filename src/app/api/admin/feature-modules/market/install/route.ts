@@ -11,6 +11,7 @@ import { enforceRateLimit, RATE } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
 import { commitMarketplaceModuleInstall, resolveModuleMarketGithubConfig } from "@/lib/module-market-github";
 import { resolveModuleMarketIndexUrl } from "@/lib/module-market";
+import { verifyModuleArchiveSignature } from "@/lib/module-signature";
 
 export const dynamic = "force-dynamic";
 
@@ -414,31 +415,6 @@ export async function POST(request: NextRequest) {
       if (expectedSha256 && downloaded.sha256 !== expectedSha256) {
         throw new Error(`套件完整性校驗失敗（sha256 不符）——拒絕安裝【附錄 A #13】`);
       }
-      // 【E17】ed25519 簽章驗證（有簽章即驗；無簽章按 sha256 流程放行，相容既有套件）
-      if (expectedSignature || expectedPublicKey) {
-        if (!expectedSignature || !expectedPublicKey) {
-          throw new Error("簽章驗證需同時提供 signature 與 publicKey【E17】");
-        }
-        let signatureValid = false;
-        try {
-          const publicKey = crypto.createPublicKey({
-            key: Buffer.from(expectedPublicKey, "base64"),
-            format: "der",
-            type: "spki",
-          });
-          signatureValid = crypto.verify(
-            null,
-            Buffer.from(downloaded.sha256, "hex"),
-            publicKey,
-            Buffer.from(expectedSignature, "base64")
-          );
-        } catch {
-          signatureValid = false;
-        }
-        if (!signatureValid) {
-          throw new Error("套件簽章驗證失敗（來源不符）——拒絕安裝【附錄 A #18】");
-        }
-      }
       archiveSize = downloaded.sizeBytes;
       downloadedSha256 = downloaded.sha256;
       const extractedDir = extractArchive(downloaded.filePath, downloaded.extension);
@@ -493,6 +469,20 @@ export async function POST(request: NextRequest) {
         { success: false, message: "module value 需為 camelCase（小寫起頭英數字）" },
         { status: 400 }
       );
+    }
+    if (downloadedSha256) {
+      const signature = verifyModuleArchiveSignature({
+        moduleId: effectiveModuleId,
+        sha256: downloadedSha256,
+        signature: expectedSignature,
+        publicKey: expectedPublicKey,
+      });
+      if (!signature.ok) {
+        return NextResponse.json(
+          { success: false, message: `套件簽章驗證失敗：${signature.reason ?? "來源不符"}【附錄 A #18】` },
+          { status: 400 }
+        );
+      }
     }
     const manifestVersion =
       manifestParsed?.author && typeof manifestParsed.author.version === "string"

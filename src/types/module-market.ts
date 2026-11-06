@@ -8,6 +8,9 @@ export interface ModuleMarketEntry {
   repoUrl?: string;
   downloadUrl?: string;
   checksumSha256?: string;
+  /** 選填：ed25519 簽章（base64）與作者公鑰（base64 SPKI）；主程式會比對釘選信任清單 */
+  signature?: string;
+  publicKey?: string;
   category?: string;
   tags?: string[];
   releaseNotes?: string[];
@@ -51,6 +54,8 @@ export function parseModuleMarketEntry(value: unknown): ModuleMarketEntry | null
   const repoUrl = readString(entry.repoUrl) ?? undefined;
   const downloadUrl = readString(entry.downloadUrl) ?? undefined;
   const checksumSha256 = readString(entry.checksumSha256) ?? undefined;
+  const signature = readString(entry.signature) ?? undefined;
+  const publicKey = readString(entry.publicKey) ?? undefined;
   const minHostVersion = readString(entry.minHostVersion) ?? undefined;
   const latestVersion = readString(entry.latestVersion) ?? version;
 
@@ -64,6 +69,8 @@ export function parseModuleMarketEntry(value: unknown): ModuleMarketEntry | null
     repoUrl,
     downloadUrl,
     checksumSha256,
+    signature,
+    publicKey,
     category: readString(entry.category) ?? undefined,
     tags: readStringArray(entry.tags),
     releaseNotes: readStringArray(entry.releaseNotes),
