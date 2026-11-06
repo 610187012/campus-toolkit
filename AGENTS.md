@@ -15,26 +15,41 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 | 代號 | 路徑 | 說明 |
 |------|------|------|
 | **A** | `\campus-toolkit` | A「主程式」 |
-| **B** | `\campus-toolkit-marketplace` | B「模組市集」 |
-| **C** | `\selfDirectedLearning` | C「選用功能模組」（自主學習計畫，開發中） |
-| **D** | `\examRegistration` | D「選用功能模組」（升學考試與模擬考校內報名，已上架維護） |
-| **E** | `\identityTaxInquiry` | E「選用功能模組」（註冊身分調查與財稅查調，開發中） |
+| **B** | `\module-sdk` | B「模組 SDK」 |
+| **C** | `\campus-toolkit-marketplace` | C「模組市集」 |
+| **D** | （暫留，未指定） | D「主題市集」（暫留代號，未納入本 workspace） |
+| **E** | `\selfDirectedLearning` | E「選用功能模組」（自主學習計畫） |
+| **F** | `\examRegistration` | F「選用功能模組」（升學與模擬考校內報名） |
+| **G** | `\identityTaxInquiry` | G「選用功能模組」（註冊身分與財稅查調） |
 
 ### 名詞解釋
 
-五支程式**沒有下達指令時，請勿修改與 push**。
+七支程式**沒有下達指令時，請勿修改與 push**。
 
-- **A「主程式」**：本機測試用的主程式，用來掛載安裝 C、D、E「選用功能模組」。
-- **B「模組市集」**：選用功能模組打包後上架的市集。
-- **C「選用功能模組」**：正在開發的選用功能模組（`selfDirectedLearning` 自主學習計畫），又稱「外掛」、「外掛功能」。
-- **D「選用功能模組」**：已上架、維護中的選用功能模組（`examRegistration` 升學考試與模擬考校內報名）；維護時流程同「修改C」「打包C」，但對 D 專案操作。
-- **E「選用功能模組」**：開發中的選用功能模組（`identityTaxInquiry` 註冊身分調查與財稅查調）；流程同「修改C」「打包C」，但對 E 專案操作。
+| 代號 | 名稱 | 說明 |
+|------|------|------|
+| **A** | 主程式 | 本機測試用的主程式，用來掛載 E、F、G「選用功能模組」 |
+| **B** | 模組 SDK | 公開契約、manifest schema、靜態檢查與型別快照；用於撰寫新模組與打包前檢查 |
+| **C** | 模組市集 | 選用功能模組打包後上架的市集 |
+| **D** | 主題市集 | 暫留代號；本 workspace 目前沒有這個專案，相關操作先不執行 |
+| **E** | 選用功能模組 | `selfDirectedLearning` 自主學習計畫 |
+| **F** | 選用功能模組 | `examRegistration` 升學與模擬考校內報名（已上架維護） |
+| **G** | 選用功能模組 | `identityTaxInquiry` 註冊身分與財稅查調 |
+
+E、F、G 又稱「外掛」、「外掛功能」；維護時流程相同，只是對指定的模組專案操作。
 
 ### 工作指令
 
 **「啟動」指令**，標準配置流程：
-1. 請將五支專案程式（A、B、C、D、E）pull 後強制覆蓋，並啟動 A「主程式」本機伺服器測試
-2. 將 C、D、E「選用功能模組」逐支掛載安裝進入 A「主程式」（三支皆為複製＋監聽模式）
+
+1. 將 A、B、E、F、G 的遠端程式 pull 後強制覆蓋本地（C 不 pull，保留本地市集狀態；
+   D 為暫留代號，尚未納入 workspace，不執行 pull）。覆蓋前先確認沒有要保留的未提交
+   變更；覆蓋後各專案視需要執行 `npm install`。
+1. 先停 A 的 dev server，將 E、F、G 逐支以複製＋監聽模式掛載進 A：
+   `npm run module:link -- <模組專案路徑> --copy --watch`
+   （E14：掛載／解除前必須停 dev server，掛完再啟動）。
+1. 啟動 A 的本地伺服器（`npm run dev`）測試；E／F／G 的 `--watch` 程序須常駐，
+   才能持續同步。
 
 <details open>
 <summary>本機外掛掛載方法（E14 鐵律，掛不上去先看這裡）</summary>
@@ -43,32 +58,52 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
    完成後確認 `module.lock.json` 的 `source` 為 `link-copy:`（若為 `link:` 即掛錯）。
    win32 預設 link 是 junction，會被 Turbopack 判為 project root 外的無效 symlink，
    全站 Build Error（`Module not found`＋`Symlink ... is invalid`）——此為 E14，不可用
-2. 掛載／解除前先停 dev server：運行中的 dev server 會重生成
+1. 掛載／解除前先停 dev server：運行中的 dev server 會重生成
    `.next/dev/types/validator.ts` 滯留引用，使驗證鏈的 `npm run lint` 誤判失敗；
    掛完再啟動
-3. 已掛載時不可直接重掛（報 `src/modules/<value> 已存在`）：先
+1. 已掛載時不可直接重掛（報 `src/modules/<value> 已存在`）：先
    `npm run module:uninstall -- <value>`，再以複製＋監聽模式重掛
-4. `--watch` 程序須常駐：改 C／D／E 後 300ms 內整棵同步到 `src/modules/<value>`，
+1. `--watch` 程序須常駐：改 E／F／G 後 300ms 內整棵同步到 `src/modules/<value>`，
    動到 module.json 自動重跑掃描器；程序消失（如重開機）就重跑掛載指令
-5. 驗證：模組 API 路由回 401（未登入）而非 Build Error，dev log 無
+1. 驗證：模組 API 路由回 401（未登入）而非 Build Error，dev log 無
    `Module not found`／`is invalid` 即成功
 
 </details>
 
-**「修改C」指令**，實施流程：
-1. 只在 C「選用功能模組」程式專案中修改，修改後同步到 A「主程式」已掛載的功能模組測試結果
-2. 將 C「選用功能模組」 push 至遠端
+### module-sdk（B）使用時機
 
-**「打包C」指令**，實施流程：
-1. 請將 C「選用功能模組」打包，並上架到 B「模組市集」：在 B 執行
-   `npm run publish:push -- <C 專案路徑>`，腳本會自動把 C 的 `changelog[0].notes` 寫入 B 的
-   `releaseNotes`（A 市集卡片以條列顯示）、產生只保留最新一版的 `releases/notes.txt`，
-   並 commit＋push B；C 的 `changelog[0].notes` 維持 3 點以內，完成後 push C
-2. **絕不更動或 push 到 A「主程式」**
+1. **撰寫新模組時**：在 B 執行
+   `node bin/module-check.mjs <模組路徑> --host-version <A 的 src/version.json 版本>`，
+   做 manifest、import、依賴、集合宣告的早期自檢；manifest 與公開面寫法以 B 的
+   `module.schema.json`／`snapshots/` 為參考。
+1. **打包模組前**：先跑 B 的 `module:check`，再跑 A 的
+   `npm run module:check -- <模組路徑>` 複驗；兩者都零 error 才可打包。
+   若 B 與 A 現行規則不一致，以 A 的 `module:check` 與宿主 `npm run lint` 為最終判定，
+   並回報 B 需要對齊的地方。
+1. B 只負責契約與靜態檢查，**不負責安裝、掛載或啟動**；實際執行與型別最終判定仍在 A。
+
+**「修改E」／「修改F」／「修改G」指令**，實施流程（對指定模組專案操作）：
+
+1. 只在指定的模組專案中修改，修改後同步到 A 已掛載的模組測試結果。
+1. 將該模組專案 push 至遠端。
+
+**「打包」指令**，實施流程（將指定模組上架到 C「模組市集」）：
+
+1. 指定要打包的模組（E／F／G，或未來新模組），確認 `module.json` 的
+   `author.version` 與 `changelog[0].version` 一致，`changelog[0].notes` 最多 3 點。
+1. 打包前檢查：先跑 B 的 `module:check`，再跑 A 的
+   `npm run module:check -- <模組路徑>`；兩者都零 error 才繼續。
+1. 在 C 執行 `npm run publish:push -- <模組專案路徑>`；腳本會把
+   `changelog[0].notes` 寫入 C 的 `releaseNotes`、產生只保留最新版的
+   `releases/notes.txt`，並 commit＋push C。C 平時不參與「啟動」的 pull，
+   打包前請先確認 C 的本地狀態與遠端分支正確。
+1. 完成後 push 指定模組專案（E／F／G）本身。
+1. **絕不更動或 push 到 A「主程式」**；也不要把本機 A 的掛載產物 push 上去。
 
 **「修改A」指令**，實施流程：
-1. 請針對 A「主程式」進行修改
-2. 修改完成後 push A「主程式」，請勿將本機掛載安裝的選用功能模組 push 上去
+
+1. 請針對 A「主程式」進行修改。
+1. 修改完成後 push A「主程式」，請勿將本機掛載安裝的選用功能模組 push 上去。
 
 ### 貢獻者規範（必讀）
 
@@ -142,7 +177,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
    - Toast 元件會在 2 秒後自動消失，樣式使用 CSS 主題配色
      （`--success` 綠底、`--danger` 紅底白字）。
    - 儲存中的過場動畫（BlockingMask）保留不移除，僅移除儲存結果的過場動畫。
-   - **不適用於選用功能模組**（如 `examRegistration`（D）使用自己的 FlashModal）。
+   - **不適用於選用功能模組**（如 `examRegistration`（F）使用自己的 FlashModal）。
 
 ## 說明文字格式（必讀）
 
