@@ -16,6 +16,79 @@ export const dynamic = "force-dynamic";
 
 /** 套件下載上限（bytes）：市集第一期上限 500KB＋緩衝＝1MB【附錄 A #11】 */
 const MAX_ARCHIVE_BYTES = 1024 * 1024;
+/** 正式上架／安裝的套件上限（壓縮後 500KB） */
+const MARKET_PACKAGE_LIMIT = 500 * 1024;
+const MODULE_VALUE_RE = /^[a-z][A-Za-z0-9]*$/;
+const HOST_VERSION_RE = /^\d+\.\d+$/;
+const HOST_CONTRACT_VERSION = 1;
+
+function versionParts(value: string): number[] {
+  return String(value)
+    .split(".")
+    .map((part) => {
+      const n = Number.parseInt(part, 10);
+      return Number.isNaN(n) ? -1 : n;
+    });
+}
+
+function versionGreater(a: string, b: string): boolean {
+  const pa = versionParts(a);
+  const pb = versionParts(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (x > y) return true;
+    if (x < y) return false;
+  }
+  return false;
+}
+
+function readHostVersion(): string {
+  try {
+    const raw = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), "src", "version.json"), "utf-8").replace(/^\uFEFF/, "")
+    ) as { version?: unknown };
+    return typeof raw.version === "string" ? raw.version : "";
+  } catch {
+    return "";
+  }
+}
+
+function runModuleChecker(moduleDir: string): { ok: boolean; output: string; tail: string } {
+  const result = spawnSync(
+    process.execPath,
+    [path.join(process.cwd(), "scripts", "module-check.mjs"), moduleDir],
+    { cwd: process.cwd(), encoding: "utf-8", timeout: 180_000 }
+  );
+  const output = `${result.stderr || ""}${result.stdout || ""}`.trim();
+  return { ok: result.status === 0, output, tail: output.split("\n").slice(-3).join("；") };
+}
+
+/** 用宿主掃描器的 validate-only 模式複驗 manifest／route 撞名／契約版本 */
+function runRegistryValidate(moduleDir: string, moduleId: string): { ok: boolean; output: string; tail: string } {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "campus-market-validate-"));
+  try {
+    fs.cpSync(moduleDir, path.join(tempRoot, moduleId), { recursive: true });
+    const result = spawnSync(
+      process.execPath,
+      [path.join(process.cwd(), "scripts", "build-module-registry.mjs")],
+      {
+        cwd: process.cwd(),
+        encoding: "utf-8",
+        timeout: 180_000,
+        env: {
+          ...process.env,
+          MODULE_REGISTRY_DIR: tempRoot,
+          MODULE_REGISTRY_VALIDATE_ONLY: "1",
+        },
+      }
+    );
+    const output = `${result.stderr || ""}${result.stdout || ""}`.trim();
+    return { ok: result.status === 0, output, tail: output.split("\n").slice(-3).join("；") };
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
 
 function buildManualInstallGuide(moduleId: string) {
   return {
@@ -113,7 +186,9 @@ async function assertSafeDownloadUrl(raw: string): Promise<URL> {
   return url;
 }
 
-async function downloadToTemp(downloadUrl: string): Promise<{ filePath: string; extension: string; sha256: string }> {
+async function downloadToTemp(
+  downloadUrl: string
+): Promise<{ filePath: string; extension: string; sha256: string; sizeBytes: number }> {
   const url = await assertSafeDownloadUrl(downloadUrl);
   const lowerPath = url.pathname.toLowerCase();
   const suffix = lowerPath.endsWith(".zip") ? ".zip" : lowerPath.endsWith(".tar.gz") ? ".tar.gz" : "";
@@ -151,6 +226,7 @@ async function downloadToTemp(downloadUrl: string): Promise<{ filePath: string; 
     filePath,
     extension: suffix,
     sha256: crypto.createHash("sha256").update(buffer).digest("hex"),
+    sizeBytes: buffer.length,
   };
 }
 
@@ -286,6 +362,7 @@ export async function POST(request: NextRequest) {
 
     let workingDir = "";
     let downloadedSha256: string | null = null;
+    let archiveSize = 0;
     let sourceRef = "";
     if (sourcePath) {
       const normalized = path.resolve(sourcePath);
@@ -316,6 +393,7 @@ export async function POST(request: NextRequest) {
       const archivePath = path.join(tempDir, `uploaded${extension}`);
       const buffer = Buffer.from(await uploadArchive.arrayBuffer());
       fs.writeFileSync(archivePath, buffer);
+      archiveSize = buffer.length;
       downloadedSha256 = crypto.createHash("sha256").update(buffer).digest("hex");
 
       if (expectedSha256 && !/^[0-9a-f]{64}$/.test(expectedSha256)) {
@@ -361,6 +439,7 @@ export async function POST(request: NextRequest) {
           throw new Error("套件簽章驗證失敗（來源不符）——拒絕安裝【附錄 A #18】");
         }
       }
+      archiveSize = downloaded.sizeBytes;
       downloadedSha256 = downloaded.sha256;
       const extractedDir = extractArchive(downloaded.filePath, downloaded.extension);
       workingDir = findModuleManifestRoot(extractedDir);
@@ -368,6 +447,13 @@ export async function POST(request: NextRequest) {
     } else {
       return NextResponse.json(
         { success: false, message: "請提供 sourcePath、downloadUrl 或 archive（上傳檔）" },
+        { status: 400 }
+      );
+    }
+
+    if (archiveSize > MARKET_PACKAGE_LIMIT) {
+      return NextResponse.json(
+        { success: false, message: `套件過大（${Math.round(archiveSize / 1024)}KB，上限 500KB）` },
         { status: 400 }
       );
     }
@@ -402,6 +488,12 @@ export async function POST(request: NextRequest) {
       );
     }
     const effectiveModuleId = moduleId || manifestValue;
+    if (!MODULE_VALUE_RE.test(effectiveModuleId)) {
+      return NextResponse.json(
+        { success: false, message: "module value 需為 camelCase（小寫起頭英數字）" },
+        { status: 400 }
+      );
+    }
     const manifestVersion =
       manifestParsed?.author && typeof manifestParsed.author.version === "string"
         ? manifestParsed.author.version
@@ -425,6 +517,52 @@ export async function POST(request: NextRequest) {
       if (!manifestVersion) {
         return NextResponse.json(
           { success: false, message: "module.json 缺少 author.version，無法建立正式安裝提交" },
+          { status: 400 }
+        );
+      }
+      if (contractVersion > HOST_CONTRACT_VERSION) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `module.json 的 contractVersion ${contractVersion} 高於主程式契約 ${HOST_CONTRACT_VERSION}，請先升級主程式`,
+          },
+          { status: 400 }
+        );
+      }
+      if (minHostVersion !== "0" && !HOST_VERSION_RE.test(minHostVersion)) {
+        return NextResponse.json(
+          { success: false, message: 'module.json 的 minHostVersion 需為 "主.次" 格式' },
+          { status: 400 }
+        );
+      }
+      const hostVersion = readHostVersion();
+      if (hostVersion && minHostVersion !== "0" && versionGreater(minHostVersion, hostVersion)) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `模組需要主程式 ${minHostVersion}，目前為 ${hostVersion}，請先升級主程式`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const checked = runModuleChecker(workingDir);
+      if (!checked.ok) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `模組靜態安全掃描未通過：${checked.tail || "請看伺服器紀錄"}`,
+          },
+          { status: 400 }
+        );
+      }
+      const registryChecked = runRegistryValidate(workingDir, effectiveModuleId);
+      if (!registryChecked.ok) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `模組 manifest／路由驗證未通過：${registryChecked.tail || "請看伺服器紀錄"}`,
+          },
           { status: 400 }
         );
       }
