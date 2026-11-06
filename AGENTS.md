@@ -29,7 +29,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 | 代號 | 名稱 | 說明 |
 |------|------|------|
 | **A** | 主程式 | 本機測試用的主程式，用來掛載 E、F、G「選用功能模組」 |
-| **B** | 模組 SDK | 公開契約、manifest schema、靜態檢查與型別快照；用於撰寫新模組與打包前檢查 |
+| **B** | 模組 SDK | 由 A 與 E／F／G 衍生的契約工具（manifest schema、靜態檢查、型別快照）；用於撰寫新模組與打包前檢查，**不是規則來源** |
 | **C** | 模組市集 | 選用功能模組打包後上架的市集 |
 | **D** | 主題市集 | 暫留代號；本 workspace 目前沒有這個專案，相關操作先不執行 |
 | **E** | 選用功能模組 | `selfDirectedLearning` 自主學習計畫 |
@@ -37,6 +37,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 | **G** | 選用功能模組 | `identityTaxInquiry` 註冊身分與財稅查調 |
 
 E、F、G 又稱「外掛」、「外掛功能」；維護時流程相同，只是對指定的模組專案操作。
+
+**契約權威順序**：A 與 E／F／G 的實際可運作為準；B 是衍生工具，B 與 E／F／G 衝突時修改 B，不是修改 E／F／G。
 
 ### 工作指令
 
@@ -76,11 +78,12 @@ E、F、G 又稱「外掛」、「外掛功能」；維護時流程相同，只�
    `node bin/module-check.mjs <模組路徑> --host-version <A 的 src/version.json 版本>`，
    做 manifest、import、依賴、集合宣告的早期自檢；manifest 與公開面寫法以 B 的
    `module.schema.json`／`snapshots/` 為參考。
-1. **打包模組前**：先跑 B 的 `module:check`，再跑 A 的
-   `npm run module:check -- <模組路徑>` 複驗；兩者都零 error 才可打包。
-   若 B 與 A 現行規則不一致，以 A 的 `module:check` 與宿主 `npm run lint` 為最終判定，
-   並回報 B 需要對齊的地方。
+1. **打包模組前**：以 A 的 `npm run module:check -- <模組路徑>` 零 error 為 gate；
+   再跑 B 的 `module:check` 作為契約對齊檢查。B 若尚未全綠，列為 B 的待修項，
+   **不阻擋 E／F／G 打包**；B 對齊 E／F／G 後才把 B check 升為 gate。
 1. B 只負責契約與靜態檢查，**不負責安裝、掛載或啟動**；實際執行與型別最終判定仍在 A。
+   B 的 snapshots／allowlist 以 A 與 E／F／G 為生成來源與 golden tests；B 驗不過 E／F／G
+   是 B 要修，不是 E／F／G 要改。
 
 **「修改E」／「修改F」／「修改G」指令**，實施流程（對指定模組專案操作）：
 
@@ -91,8 +94,8 @@ E、F、G 又稱「外掛」、「外掛功能」；維護時流程相同，只�
 
 1. 指定要打包的模組（E／F／G，或未來新模組），確認 `module.json` 的
    `author.version` 與 `changelog[0].version` 一致，`changelog[0].notes` 最多 3 點。
-1. 打包前檢查：先跑 B 的 `module:check`，再跑 A 的
-   `npm run module:check -- <模組路徑>`；兩者都零 error 才繼續。
+1. 打包前檢查：A 的 `npm run module:check -- <模組路徑>` 零 error 才繼續；
+   B 的 `module:check` 同步執行並記錄落差，B 未對齊前不阻擋 E／F／G。
 1. 在 C 執行 `npm run publish:push -- <模組專案路徑>`；腳本會把
    `changelog[0].notes` 寫入 C 的 `releaseNotes`、產生只保留最新版的
    `releases/notes.txt`，並 commit＋push C。C 平時不參與「啟動」的 pull，
