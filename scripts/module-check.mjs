@@ -69,6 +69,8 @@ const HOST_FORBIDDEN = [
 ];
 /** 掛豁免集合（掛勾設施；§6.3-3 由掃描器管寫入面，此處僅豁免集合宣告比對） */
 const HOOK_COLLECTIONS = new Set(["announcements", "calendarEvents", "settings"]);
+/** 宿主保留集合：模組不得宣告或直接存取（P0-2） */
+const HOST_RESERVED_COLLECTIONS = new Set(["users", "settings", "activityLog", "revokedJTIs"]);
 /** 客戶端檔危險模式（§6.3-8） */
 const CLIENT_DANGER = [
   { re: /localStorage/, name: "localStorage" },
@@ -291,6 +293,10 @@ function main() {
     const collectionRe = /\.collection\(\s*["'`]([A-Za-z][A-Za-z0-9_]*)["'`]\s*\)/g;
     while ((match = collectionRe.exec(source)) !== null) {
       const name = match[1];
+      if (HOST_RESERVED_COLLECTIONS.has(name)) {
+        fail(`${relFile} 存取宿主保留集合「${name}」——模組不得直接讀寫【P0-2】`);
+        continue;
+      }
       if (!declaredCollections.has(name) && !HOOK_COLLECTIONS.has(name)) {
         fail(
           `${relFile} 存取未宣告集合「${name}」——請在 module.json dataCollections 宣告【§6.3-6】`
@@ -301,6 +307,10 @@ function main() {
     while ((match = DOC_PATH_RE.exec(source)) !== null) {
       const name = match[1].split("/")[0]?.trim() ?? "";
       if (!name) continue;
+      if (HOST_RESERVED_COLLECTIONS.has(name)) {
+        fail(`${relFile} 以 doc 路徑存取宿主保留集合「${name}」——模組不得直接讀寫【P0-2】`);
+        continue;
+      }
       if (!declaredCollections.has(name) && !HOOK_COLLECTIONS.has(name)) {
         fail(
           `${relFile} 以 doc 路徑存取未宣告集合「${name}」——請在 module.json dataCollections 宣告【P0-3／§6.3-6】`

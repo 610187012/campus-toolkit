@@ -50,6 +50,8 @@ const CATEGORIES = ["帳號與權限", "校務資料", "系統與紀錄"];
 const STATUSES = ["planned", "building", "live"];
 const KNOWN_HOOKS = ["announcements", "calendar"];
 const PAGE_PREFIXES = ["/admin", "/student", "/parent", "/staff"];
+/** 宿主保留集合：模組不得宣告（P0-2） */
+const HOST_RESERVED_COLLECTIONS = new Set(["users", "settings", "activityLog", "revokedJTIs"]);
 /** manifest status → 權限單位 status（types/modules.ts 的 ModuleStatus） */
 const PERMISSION_STATUS = { live: "built", building: "apiOnly", planned: "planned" };
 /** 內建代碼中不在 MODULES 權限表者（撞名即報錯） */
@@ -400,6 +402,8 @@ function validateManifest(relDir, dirName, m, reserved, ctx) {
       m.dataCollections.forEach((name, i) => {
         if (!isNonEmptyString(name) || !/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) {
           at(`dataCollections[${i}] 格式不符（英數字起頭）`);
+        } else if (HOST_RESERVED_COLLECTIONS.has(name)) {
+          at(`dataCollections 不可宣告宿主保留集合「${name}」【P0-2】`);
         } else if (seen.has(name)) {
           at(`dataCollections 重複：${name}`);
         } else {
