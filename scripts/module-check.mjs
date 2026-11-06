@@ -105,6 +105,50 @@ function* walkFiles(dir) {
   }
 }
 
+/** 管理頁是否有任一祖先 layout 使用 AdminSectionShell（client-side 權限殼） */
+function hasAdminShellAncestor(moduleDir, file) {
+  const adminRoot = path.join(moduleDir, "admin");
+  let dir = path.dirname(file);
+  while (dir.startsWith(adminRoot)) {
+    const layout = fs
+      .readdirSync(dir)
+      .find((name) => /^layout\.(tsx|ts|jsx|js)$/.test(name));
+    if (layout) {
+      const text = fs.readFileSync(path.join(dir, layout), "utf-8");
+      if (text.includes("AdminSectionShell")) return true;
+    }
+    if (dir === adminRoot) break;
+    dir = path.dirname(dir);
+  }
+  return false;
+}
+
+/** API route 守門三件套＋非管理端 module gate 的存在性檢查（P0-8 build-time gate） */
+function checkRouteGuards(moduleDir, file, source, relFile, fail) {
+  if (/^api\/.*\/route\.(ts|js)$/.test(relFile) || /^api\/route\.(ts|js)$/.test(relFile)) {
+    const routePath = `/${relFile.replace(/route\.(ts|js)$/, "").replace(/\/$/, "")}`;
+    if (!/enforceRateLimit\s*\(|checkRateLimit\s*\(/.test(source)) {
+      fail(`${relFile}：缺少限流（enforceRateLimit／checkRateLimit）【P0-8】`);
+    }
+    if (!/requireRole\s*\(|requireAdminModule\s*\(|requireModulePermission\s*\(/.test(source)) {
+      fail(`${relFile}：缺少鑑權（requireRole／requireAdminModule／requireModulePermission）【P0-8】`);
+    }
+    const mutating = /export\s+(?:async\s+)?function\s+(POST|PUT|PATCH|DELETE)\b/.test(source);
+    if (mutating && !/assertSameOrigin\s*\(/.test(source)) {
+      fail(`${relFile}：寫入方法缺少 CSRF（assertSameOrigin）【P0-8】`);
+    }
+    if (/^\/api\/(student|parent|staff)\//.test(routePath) && !/requireFeatureModuleEnabled\s*\(/.test(source)) {
+      fail(`${relFile}：${routePath} 缺少模組啟用閘門（requireFeatureModuleEnabled）【P0-8】`);
+    }
+  }
+
+  if (relFile.startsWith("admin/") && /page\.(tsx|ts|jsx|js)$/.test(relFile)) {
+    if (!hasAdminShellAncestor(moduleDir, file)) {
+      fail(`${relFile}：管理頁缺少任一祖先 layout 的 AdminSectionShell 權限殼【P0-8】`);
+    }
+  }
+}
+
 function main() {
   if (process.env.MODULE_CHECK_SKIP === "1") {
     process.stdout.write("[module-check] MODULE_CHECK_SKIP=1，略過掃描\n");
@@ -206,6 +250,9 @@ function main() {
         );
       }
     }
+
+    // P0-8：API 守門三件套與管理頁權限殼的存在性
+    checkRouteGuards(moduleDir, file, source, relFile, fail);
   }
 
   if (errors.length) {
