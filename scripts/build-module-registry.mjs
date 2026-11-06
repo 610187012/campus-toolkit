@@ -158,6 +158,24 @@ function isString(value) {
 function isNonEmptyString(value) {
   return isString(value) && value.trim() !== "";
 }
+/** 路由路徑安全檢查：禁止 .／..、反斜線、編碼、查詢字串、空片段（防 path traversal）【E13】 */
+const DYNAMIC_SEGMENT_RE = /^\[\[?\.\.\.[A-Za-z0-9_]+\]\]?$|^\[[A-Za-z0-9_]+\]$/;
+function isSafeRoutePath(value) {
+  if (!isString(value) || !value.startsWith("/") || value.length > 300) return false;
+  if (/[\\?#%]/.test(value)) return false;
+  for (const char of value) {
+    if (char.charCodeAt(0) < 0x20) return false;
+  }
+  if (value.includes("//")) return false;
+  const segments = value.slice(1).split("/");
+  for (const segment of segments) {
+    if (segment === "" || segment === "." || segment === "..") return false;
+    if ((segment.includes("[") || segment.includes("]")) && !DYNAMIC_SEGMENT_RE.test(segment)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /** 單一 manifest 的結構驗證（對應文件 §3.2 規則 1–4 與 §3.3 擴充 5–9） */
 function validateManifest(relDir, dirName, m, reserved, ctx) {
@@ -257,6 +275,12 @@ function validateManifest(relDir, dirName, m, reserved, ctx) {
       }
       if (p.length > 1 && p.endsWith("/")) {
         at(`routes[${i}].path「${p}」不可有結尾斜線`);
+        return;
+      }
+      if (!isSafeRoutePath(p)) {
+        at(
+          `routes[${i}].path「${p}」含不安全路徑片段（禁止 .、..、反斜線、編碼、查詢字串與空片段）【E13】`
+        );
         return;
       }
       if (kind === "page") {
@@ -691,8 +715,12 @@ function syncAdapters(manifests) {
       if (!route || !isString(route.path) || (route.kind !== "page" && route.kind !== "api")) continue;
       const targetRel = route.path.replace(/^\//, "").replace(/\/$/, "");
       if (targetRel === "") continue;
-      const entityDir = path.join(ROOT, "src", "modules", m.value, targetRel);
-      const adapterDir = path.join(APP_DIR, targetRel);
+      // 防禦深度：即使 manifest 驗證漏掉，也絕不把檔案寫出模組／src/app 之外。
+      const moduleRoot = path.resolve(ROOT, "src", "modules", m.value);
+      const entityDir = path.resolve(moduleRoot, targetRel);
+      const adapterDir = path.resolve(APP_DIR, targetRel);
+      if (entityDir !== moduleRoot && !entityDir.startsWith(`${moduleRoot}${path.sep}`)) continue;
+      if (adapterDir !== APP_DIR && !adapterDir.startsWith(`${APP_DIR}${path.sep}`)) continue;
       if (route.kind === "page") {
         if (!findEntity(entityDir, PAGE_ENTITIES)) continue; // 尚未實作＝尚未掛載
         const pageRel = `${targetRel}/page.tsx`;
