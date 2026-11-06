@@ -77,6 +77,71 @@ const CLIENT_DANGER = [
   { re: /(^|[^.\w])eval\s*\(/, name: "eval()" },
   { re: /new\s+Function\s*\(/, name: "new Function()" },
 ];
+const SCRIPT_TEST_RE = /^(?:scripts|tests?)\//;
+const DYNAMIC_IMPORT_RE = /\bimport\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g;
+const DYNAMIC_IMPORT_DYNAMIC_RE = /\bimport\s*\(\s*[A-Za-z_$]/;
+const DOC_PATH_RE = /\.doc\(\s*["'`]([^"'`]+)["'`]\s*\)/g;
+
+function isScriptOrTest(rel) {
+  return SCRIPT_TEST_RE.test(rel);
+}
+
+/** 找出真正的 "use client"（允許前面有註解／空白） */
+function isUseClient(source) {
+  const stripped = source
+    .replace(/^\uFEFF/, "")
+    .replace(/^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*/, "");
+  return /^["']use client["']/.test(stripped);
+}
+
+/** 相對 import：解析後必須在模組資料夾內；執行期檔案不可 import scripts/tests 內的東西 */
+function checkRelativeImport(spec, relFile, file, moduleDir, fail) {
+  const resolved = path.resolve(path.dirname(file), spec);
+  const targetRel = path.relative(moduleDir, resolved);
+  if (targetRel.startsWith("..") || path.isAbsolute(targetRel)) {
+    fail(`${relFile} import「${spec}」——相對路徑逃出模組資料夾【P0-3】`);
+    return;
+  }
+  const normalized = targetRel.split(path.sep).join("/");
+  if (!isScriptOrTest(relFile) && isScriptOrTest(normalized)) {
+    fail(`${relFile} import「${spec}」——執行期檔案不可 import scripts/tests 內容【P0-3】`);
+  }
+}
+
+/** 單一 import spec 的白名單檢查（靜態與動態 import 共用） */
+function checkImportSpec(spec, relFile, file, moduleDir, moduleValue, hostDeps, fail) {
+  if (spec.startsWith(".")) {
+    checkRelativeImport(spec, relFile, file, moduleDir, fail);
+    return;
+  }
+  if (spec.startsWith("node:")) {
+    if (!isScriptOrTest(relFile)) {
+      fail(`${relFile} import「${spec}」——執行期檔案禁用 node: 內建模組【P0-3】`);
+    }
+    return;
+  }
+  if (!spec.startsWith("@/")) {
+    const pkgName = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0];
+    if (!hostDeps.has(pkgName)) fail(`${relFile} import「${spec}」——非主程式既有依賴【E10】`);
+    return;
+  }
+  if (HOST_FORBIDDEN.some((prefix) => spec === prefix || spec.startsWith(`${prefix}/`))) {
+    fail(`${relFile} import「${spec}」——主程式核心寫入面禁止 import【§6.3-1】`);
+    return;
+  }
+  if (spec.startsWith("@/modules/")) {
+    const rest = spec.slice("@/modules/".length);
+    const other = rest.split("/")[0];
+    if (other && other !== moduleValue) {
+      fail(`${relFile} import「${spec}」——禁止 import 其他模組【§6.3-9】`);
+    }
+    return;
+  }
+  const allowed = HOST_SURFACE_ALLOW.some((prefix) => spec === prefix || spec.startsWith(`${prefix}/`));
+  if (!allowed) {
+    fail(`${relFile} import「${spec}」——不在主程式公開面白名單【§6.3-1】`);
+  }
+}
 
 const errors = [];
 function fail(msg) {
@@ -197,7 +262,7 @@ function main() {
 
   for (const file of walkFiles(moduleDir)) {
     const source = fs.readFileSync(file, "utf-8");
-    const isClient = /^["']use client["'];?/m.test(source);
+    const isClient = isUseClient(source);
     const relFile = rel(file);
 
     // 規則 8：客戶端危險模式
@@ -207,48 +272,38 @@ function main() {
       }
     }
 
-    // 規則 1/2/9：import 檢查
+    // 規則 1/2/9：import 檢查（靜態＋動態＋require）
     const importRe = /(?:^|\n)\s*(?:import|export)\s+(?:type\s+)?(?:[\w*{},\s]+\s+from\s+)?["']([^"']+)["']/g;
+    const requireRe = /require\(\s*["'`]([^"'`]+)["'`]\s*\)/g;
     let match;
-    while ((match = importRe.exec(source)) !== null) {
-      const spec = match[1];
-
-      // 相對路徑（模組內）
-      if (spec.startsWith("./") || spec.startsWith("../")) continue;
-
-      if (!spec.startsWith("@/")) {
-        // bare import：宿主既有依賴才可
-        const pkgName = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0];
-        if (!hostDeps.has(pkgName)) fail(`${relFile} import「${spec}」——非主程式既有依賴【E10】`);
-        continue;
-      }
-
-      // 絕對 @/ 匯入
-      if (HOST_FORBIDDEN.some((prefix) => spec === prefix || spec.startsWith(`${prefix}/`))) {
-        fail(`${relFile} import「${spec}」——主程式核心寫入面禁止 import【§6.3-1】`);
-        continue;
-      }
-      if (spec.startsWith("@/modules/")) {
-        const rest = spec.slice("@/modules/".length);
-        const other = rest.split("/")[0];
-        if (other && other !== moduleValue) {
-          fail(`${relFile} import「${spec}」——禁止 import 其他模組【§6.3-9】`);
-        }
-        continue;
-      }
-      const allowed = HOST_SURFACE_ALLOW.some((prefix) => spec === prefix || spec.startsWith(`${prefix}/`));
-      if (!allowed) {
-        fail(`${relFile} import「${spec}」——不在主程式公開面白名單【§6.3-1】`);
-      }
+    const specs = new Set();
+    while ((match = importRe.exec(source)) !== null) specs.add(match[1]);
+    while ((match = requireRe.exec(source)) !== null) specs.add(match[1]);
+    while ((match = DYNAMIC_IMPORT_RE.exec(source)) !== null) specs.add(match[1]);
+    for (const spec of specs) {
+      checkImportSpec(spec, relFile, file, moduleDir, moduleValue, hostDeps, fail);
+    }
+    if (!isScriptOrTest(relFile) && DYNAMIC_IMPORT_DYNAMIC_RE.test(source)) {
+      fail(`${relFile}：動態 import 非字面值，無法驗證【P0-3】`);
     }
 
-    // 規則 6：Firestore 集合字面值 vs dataCollections 宣告
-    const collectionRe = /\.collection\(\s*["']([A-Za-z][A-Za-z0-9_]*)["']\s*\)/g;
+    // 規則 6：Firestore 集合字面值 vs dataCollections 宣告（collection＋doc 路徑）
+    const collectionRe = /\.collection\(\s*["'`]([A-Za-z][A-Za-z0-9_]*)["'`]\s*\)/g;
     while ((match = collectionRe.exec(source)) !== null) {
       const name = match[1];
       if (!declaredCollections.has(name) && !HOOK_COLLECTIONS.has(name)) {
         fail(
           `${relFile} 存取未宣告集合「${name}」——請在 module.json dataCollections 宣告【§6.3-6】`
+        );
+      }
+    }
+    DOC_PATH_RE.lastIndex = 0;
+    while ((match = DOC_PATH_RE.exec(source)) !== null) {
+      const name = match[1].split("/")[0]?.trim() ?? "";
+      if (!name) continue;
+      if (!declaredCollections.has(name) && !HOOK_COLLECTIONS.has(name)) {
+        fail(
+          `${relFile} 以 doc 路徑存取未宣告集合「${name}」——請在 module.json dataCollections 宣告【P0-3／§6.3-6】`
         );
       }
     }
