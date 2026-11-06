@@ -36,6 +36,7 @@ const HOST_SURFACE_ALLOW = [
   "@/lib/calendar",
   "@/lib/module-gate",
   "@/lib/module-db",
+  "@/lib/module-host-data",
   "@/lib/settings-client",
   "@/lib/settings-server",
   "@/lib/session",
