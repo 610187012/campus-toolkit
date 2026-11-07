@@ -27,10 +27,22 @@ const { createScopedDb, CORE_READ_ONLY_COLLECTIONS } = mod.exports;
 const writes = [];
 
 function makeDoc(docPath) {
-  return {
+  const doc = {
     path: docPath,
     id: docPath.split("/").pop(),
-    get: async () => ({ exists: true, data: () => ({}) }),
+    ref: {
+      path: docPath,
+      set: async () => {
+        writes.push(["ref.set", docPath]);
+      },
+      update: async () => {
+        writes.push(["ref.update", docPath]);
+      },
+      delete: async () => {
+        writes.push(["ref.delete", docPath]);
+      },
+    },
+    get: async () => ({ exists: true, data: () => ({}), ref: doc.ref }),
     set: async () => {
       writes.push(["set", docPath]);
     },
@@ -42,6 +54,7 @@ function makeDoc(docPath) {
     },
     collection: (name) => makeCollection(`${docPath}/${name}`),
   };
+  return doc;
 }
 
 function makeCollection(collectionPath) {
@@ -59,7 +72,7 @@ function makeCollection(collectionPath) {
     limit() {
       return collection;
     },
-    get: async () => ({ docs: [] }),
+    get: async () => ({ docs: [makeDoc(`${collectionPath}/u1`)] }),
   };
   return collection;
 }
@@ -135,6 +148,12 @@ const personalDoc = scoped.doc("studentPersonalInfo/u1");
 await personalDoc.get();
 assert.throws(() => personalDoc.set({}), /唯讀/);
 assert.deepEqual(await scoped.getAll(personalDoc), [{ path: "studentPersonalInfo/u1" }]);
+
+// snapshot.ref 也不能逃逸
+const personalSnapshot = await personalDoc.get();
+assert.throws(() => personalSnapshot.ref.set({}), /唯讀/);
+const rosterSnapshots = await scoped.collection("rosterStudents").where("x", "==", 1).get();
+assert.throws(() => rosterSnapshots.docs[0].ref.set({}), /唯讀/);
 
 // batch／transaction／recursiveDelete 也必須擋核心集合
 assert.throws(

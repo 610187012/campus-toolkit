@@ -129,7 +129,80 @@ export function createScopedDb<T extends Record<string, any>>(
     return native;
   };
 
-  const readOnlyDoc = (native: any): any => {
+  const wrappedOf = new WeakMap<object, any>();
+  const QUERY_METHODS = new Set([
+    "where",
+    "orderBy",
+    "limit",
+    "limitToLast",
+    "startAt",
+    "startAfter",
+    "endAt",
+    "endBefore",
+    "offset",
+    "select",
+    "withConverter",
+  ]);
+
+  /** 包裝 snapshot：避免透過 `.ref` 取回原生 DocumentReference 後寫入 */
+  function wrapSnapshot(native: any): any {
+    if (!native || typeof native !== "object") return native;
+    const cached = wrappedOf.get(native);
+    if (cached) return cached;
+    const proxy = new Proxy(native, {
+      get(target, prop) {
+        if (prop === "ref") {
+          const ref = target.ref;
+          return ref ? readOnlyDoc(ref) : ref;
+        }
+        if (prop === "docs" && Array.isArray(target.docs)) {
+          return target.docs.map((doc: any) => wrapSnapshot(doc));
+        }
+        if (prop === "forEach") {
+          return (callback: (doc: any) => void) =>
+            target.forEach((doc: any) => callback(wrapSnapshot(doc)));
+        }
+        if (prop === "docChanges") {
+          return (...args: any[]) => {
+            const changes = target.docChanges(...args);
+            return Array.isArray(changes)
+              ? changes.map((change: any) => ({ ...change, doc: wrapSnapshot(change.doc) }))
+              : changes;
+          };
+        }
+        const value = Reflect.get(target, prop, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    wrappedOf.set(native, proxy);
+    return proxy;
+  }
+
+  /** 包裝查詢：get() 回傳的 snapshot 也要包，避免 `.ref` 逃逸 */
+  function readOnlyQuery(native: any, name: string): any {
+    const proxy = new Proxy(native, {
+      get(target, prop) {
+        if (prop === "get") {
+          return async () => wrapSnapshot(await target.get());
+        }
+        if (typeof prop === "string" && QUERY_METHODS.has(prop)) {
+          return (...args: any[]) => {
+            const next = target[prop](...args);
+            if (next && typeof next === "object" && typeof next.doc === "function") {
+              return readOnlyCollection(next);
+            }
+            return readOnlyQuery(next, name);
+          };
+        }
+        const value = Reflect.get(target, prop, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    nativeOf.set(proxy, native);
+    return proxy;
+  }
+
+  function readOnlyDoc(native: any): any {
     const name = collectionNameOfPath(native?.path ?? "");
     const proxy = new Proxy(native, {
       get(target, prop) {
@@ -144,15 +217,18 @@ export function createScopedDb<T extends Record<string, any>>(
         if (prop === "parent") {
           return readOnlyCollection(target.parent);
         }
+        if (prop === "get") {
+          return async () => wrapSnapshot(await target.get());
+        }
         const value = Reflect.get(target, prop, target);
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
     nativeOf.set(proxy, native);
     return proxy;
-  };
+  }
 
-  const readOnlyCollection = (native: any): any => {
+  function readOnlyCollection(native: any): any {
     const name = collectionNameOfPath(native?.path ?? native?.id ?? "");
     const proxy = new Proxy(native, {
       get(target, prop) {
@@ -164,8 +240,17 @@ export function createScopedDb<T extends Record<string, any>>(
         if (prop === "doc") {
           return (id?: string) => readOnlyDoc(target.doc(id));
         }
-        if (prop === "withConverter") {
-          return (...args: any[]) => readOnlyCollection(target.withConverter(...args));
+        if (prop === "get") {
+          return async () => wrapSnapshot(await target.get());
+        }
+        if (typeof prop === "string" && QUERY_METHODS.has(prop)) {
+          return (...args: any[]) => {
+            const next = target[prop](...args);
+            if (next && typeof next === "object" && typeof next.doc === "function") {
+              return readOnlyCollection(next);
+            }
+            return readOnlyQuery(next, name);
+          };
         }
         const value = Reflect.get(target, prop, target);
         return typeof value === "function" ? value.bind(target) : value;
@@ -173,7 +258,7 @@ export function createScopedDb<T extends Record<string, any>>(
     });
     nativeOf.set(proxy, native);
     return proxy;
-  };
+  }
 
   const guardWriter = (writer: any): any =>
     new Proxy(writer, {
@@ -183,11 +268,11 @@ export function createScopedDb<T extends Record<string, any>>(
             target[prop](assertWritableRef(ref), ...rest);
         }
         if (prop === "get") {
-          return (ref: any) => {
+          return async (ref: any) => {
             const native = unwrap(ref);
             const name = collectionNameOfPath(native?.path ?? "");
             if (name) accessOf(name); // 保留／設施／未宣告一律拒絕；核心集合唯讀查詢允許
-            return target.get(native);
+            return wrapSnapshot(await target.get(native));
           };
         }
         const value = Reflect.get(target, prop, target);
@@ -225,7 +310,7 @@ export function createScopedDb<T extends Record<string, any>>(
             const name = collectionNameOfPath(native?.path ?? "");
             if (name) accessOf(name); // 保留／設施／未宣告一律拒絕
           }
-          return target.getAll(...natives);
+          return target.getAll(...natives).then((snaps: any[]) => snaps.map(wrapSnapshot));
         };
       }
       if (prop === "batch") {
