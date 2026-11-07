@@ -23,6 +23,7 @@
     "module:signature-test": "node scripts/test-module-signature.mjs",
     "module:install-auth-test": "node scripts/test-module-install-auth.mjs",
     "module:install-chain-test": "node scripts/test-module-install-chain.mjs",
+    "module:db-scope-test": "node scripts/test-module-db-scope.mjs",
     "version:bump": "node scripts/version.js"
   },
   "keywords": [

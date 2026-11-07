@@ -40,3 +40,6 @@ jobs:
 
       - name: Module install chain tests
         run: npm run module:install-chain-test
+
+      - name: Module data scope tests
+        run: npm run module:db-scope-test

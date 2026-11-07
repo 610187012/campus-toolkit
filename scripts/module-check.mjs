@@ -8,7 +8,8 @@
  *   1. import 白名單＝主程式公開面＋宿主既有 npm 依賴＋模組內相對路徑
  *   2. 禁止 import 主程式核心寫入面（@/types/modules 等）
  *   5. 禁止新依賴（package.json.dependencies 非空）
- *   6. Firestore 集合字面值須在 dataCollections 宣告（掛勾集合自動豁免）
+ *   6. Firestore 集合字面值須在 dataCollections 宣告；核心個資集合可讀不可寫；
+ *      設施集合（announcements／calendarEvents）一律走掛勾函式，不可直接存取
  *   8. 客戶端檔（"use client"）禁 localStorage/sessionStorage/document.cookie/eval/new Function
  *   9. 禁 import 其他模組資料夾
  * 規則 3/4/7/10 由 build-module-registry.mjs 掃描器負責，不重複。
@@ -67,10 +68,41 @@ const HOST_FORBIDDEN = [
   "@/app/api/settings",
   "@/app/admin/modules",
 ];
-/** 掛豁免集合（掛勾設施；§6.3-3 由掃描器管寫入面，此處僅豁免集合宣告比對） */
-const HOOK_COLLECTIONS = new Set(["announcements", "calendarEvents", "settings"]);
+/** 掛鉤設施集合：不可直接讀寫，一律走 publishFromModule／publishScheduleFromModule */
+const HOST_FACILITY_COLLECTIONS = new Set(["announcements", "calendarEvents"]);
 /** 宿主保留集合：模組不得宣告或直接存取（P0-2） */
 const HOST_RESERVED_COLLECTIONS = new Set(["users", "settings", "activityLog", "revokedJTIs"]);
+/** 核心個資集合：可讀不可寫（P0-2 v2） */
+const HOST_CORE_READONLY_COLLECTIONS = new Set([
+  "rosterStudents",
+  "rosterParents",
+  "rosterStaff",
+  "rosterAdmins",
+  "studentPersonalInfo",
+  "studentPersonalIdentity",
+  "studentPersonalPhoto",
+]);
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** 核心集合的直接寫入樣式（鏈式呼叫；變數型別仍靠 runtime scopedDb 擋） */
+function coreWritePatterns(name) {
+  const quoted = `["'\x60]${escapeRegExp(name)}["'\x60]`;
+  return [
+    new RegExp(
+      `\\.collection\\(\\s*${quoted}\\s*\\)\\s*(?:\\.doc\\([^)]*\\)\\s*)?\\.(?:add|set|update|delete|create)\\s*\\(`
+    ),
+    new RegExp(
+      `\\.doc\\(\\s*["'\x60]${escapeRegExp(name)}\\/[^"'\x60]*["'\x60]\\s*\\)\\s*\\.(?:set|update|delete|create)\\s*\\(`
+    ),
+  ];
+}
+
+function hasCoreWrite(source, name) {
+  return coreWritePatterns(name).some((re) => re.test(source));
+}
 /** 客戶端檔危險模式（§6.3-8） */
 const CLIENT_DANGER = [
   { re: /localStorage/, name: "localStorage" },
@@ -297,24 +329,45 @@ function main() {
         fail(`${relFile} 存取宿主保留集合「${name}」——模組不得直接讀寫【P0-2】`);
         continue;
       }
-      if (!declaredCollections.has(name) && !HOOK_COLLECTIONS.has(name)) {
+      if (HOST_FACILITY_COLLECTIONS.has(name)) {
+        fail(
+          `${relFile} 存取設施集合「${name}」——請改用 publishFromModule／publishScheduleFromModule【P0-2】`
+        );
+        continue;
+      }
+      if (!declaredCollections.has(name)) {
         fail(
           `${relFile} 存取未宣告集合「${name}」——請在 module.json dataCollections 宣告【§6.3-6】`
         );
+        continue;
+      }
+      if (HOST_CORE_READONLY_COLLECTIONS.has(name) && hasCoreWrite(source, name)) {
+        fail(`${relFile} 對核心集合「${name}」進行寫入——核心個資集合僅供讀取【P0-2】`);
       }
     }
     DOC_PATH_RE.lastIndex = 0;
     while ((match = DOC_PATH_RE.exec(source)) !== null) {
+      if (!match[1].includes("/")) continue; // .doc("id") 是文件 ID，不是集合路徑
       const name = match[1].split("/")[0]?.trim() ?? "";
       if (!name) continue;
       if (HOST_RESERVED_COLLECTIONS.has(name)) {
         fail(`${relFile} 以 doc 路徑存取宿主保留集合「${name}」——模組不得直接讀寫【P0-2】`);
         continue;
       }
-      if (!declaredCollections.has(name) && !HOOK_COLLECTIONS.has(name)) {
+      if (HOST_FACILITY_COLLECTIONS.has(name)) {
+        fail(
+          `${relFile} 以 doc 路徑存取設施集合「${name}」——請改用掛勾函式【P0-2】`
+        );
+        continue;
+      }
+      if (!declaredCollections.has(name)) {
         fail(
           `${relFile} 以 doc 路徑存取未宣告集合「${name}」——請在 module.json dataCollections 宣告【P0-3／§6.3-6】`
         );
+        continue;
+      }
+      if (HOST_CORE_READONLY_COLLECTIONS.has(name) && hasCoreWrite(source, name)) {
+        fail(`${relFile} 對核心集合「${name}」進行寫入——核心個資集合僅供讀取【P0-2】`);
       }
     }
 
