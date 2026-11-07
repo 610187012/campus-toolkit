@@ -24,6 +24,19 @@ export interface ModuleSignatureResult {
   reason?: string;
 }
 
+/**
+ * 官方 E／F／G 的簽章公鑰（takan003 官方 key）。
+ * 公鑰不是秘密；內建可讓學校零設定驗證官方模組。
+ * 換鑰／撤銷需隨主程式版本更新；其他作者仍走 MODULE_MARKET_TRUSTED_KEYS。
+ */
+const OFFICIAL_MODULE_PUBLIC_KEY =
+  "MCowBQYDK2VwAyEA/bIHYBb7hUie/fguMoXJ2vltikMkN+CPIyVZ5UbCwHE=";
+const BUILTIN_TRUSTED_KEYS: Record<string, string[]> = {
+  examRegistration: [OFFICIAL_MODULE_PUBLIC_KEY],
+  selfDirectedLearning: [OFFICIAL_MODULE_PUBLIC_KEY],
+  identityTaxInquiry: [OFFICIAL_MODULE_PUBLIC_KEY],
+};
+
 /** 是否要求所有套件都必須有簽章（預設 false，兼容既有未簽章套件） */
 export function isModuleSignatureRequired(): boolean {
   const raw = process.env.MODULE_MARKET_REQUIRE_SIGNATURE?.trim().toLowerCase();
@@ -33,6 +46,9 @@ export function isModuleSignatureRequired(): boolean {
 /** 讀取釘選公鑰：moduleId -> base64 SPKI 公鑰清單 */
 export function readTrustedModuleKeys(): Map<string, string[]> {
   const keys = new Map<string, string[]>();
+  for (const [moduleId, list] of Object.entries(BUILTIN_TRUSTED_KEYS)) {
+    keys.set(moduleId, [...list]);
+  }
   const raw = process.env.MODULE_MARKET_TRUSTED_KEYS?.trim();
   if (!raw) return keys;
 
@@ -50,7 +66,9 @@ export function readTrustedModuleKeys(): Map<string, string[]> {
     const list = (Array.isArray(value) ? value : [value]).filter(
       (item): item is string => typeof item === "string" && item.trim() !== ""
     );
-    if (list.length > 0) keys.set(moduleId, list.map((item) => item.trim()));
+    if (list.length > 0) {
+      keys.set(moduleId, [...(keys.get(moduleId) ?? []), ...list.map((item) => item.trim())]);
+    }
   }
   return keys;
 }

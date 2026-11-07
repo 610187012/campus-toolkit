@@ -29,7 +29,12 @@ new Function("require", "module", "exports", code)(
   mod,
   mod.exports
 );
-const { verifyModuleArchiveSignature } = mod.exports;
+const { readTrustedModuleKeys, verifyModuleArchiveSignature } = mod.exports;
+
+const officialKeys = readTrustedModuleKeys();
+for (const moduleId of ["examRegistration", "selfDirectedLearning", "identityTaxInquiry"]) {
+  assert.ok((officialKeys.get(moduleId) ?? []).length > 0, `${moduleId} 應有內建官方公鑰`);
+}
 
 const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
 const other = crypto.generateKeyPairSync("ed25519");
