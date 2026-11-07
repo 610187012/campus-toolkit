@@ -25,9 +25,23 @@
     "module:install-chain-test": "node scripts/test-module-install-chain.mjs",
     "version:bump": "node scripts/version.js"
   },
-  "keywords": [],
+  "keywords": [
+    "campus",
+    "school",
+    "nextjs",
+    "firebase",
+    "education"
+  ],
   "author": "takan003",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/takan003/campus-toolkit.git"
+  },
+  "homepage": "https://github.com/takan003/campus-toolkit#readme",
+  "bugs": {
+    "url": "https://github.com/takan003/campus-toolkit/issues"
+  },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "@types/adm-zip": "^0.5.8",

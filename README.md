@@ -1,5 +1,7 @@
 # 數位校園工具箱
 
+[![CI](https://github.com/takan003/campus-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/takan003/campus-toolkit/actions/workflows/ci.yml)
+
 整合校園資訊、身分入口與管理功能的校園工具平台。以角色（學生／家長／教職員／管理員）分流首頁，支援帳號密碼與 Google 登入、CSS 主題切換、管理後台與排行榜等，並具備：
 
 - **兩步驟驗證**（TOTP 通行碼 + Email 驗證碼）
@@ -403,6 +405,7 @@ campus-toolkit/
 
 ## 安全注意事項
 
+- **漏洞回報請勿開公開 issue**；請依 [`SECURITY.md`](SECURITY.md) 使用 GitHub 私人安全回報。
 - **`.env`、`.env.local`、服務帳號 JSON 一律已被 `.gitignore` 排除，請勿強制加入版本庫。**
 - 機密只放本機環境變數與 Vercel 環境變數。
 - `FIREBASE_SERVICE_ACCOUNT_KEY`、`SESSION_SECRET` 洩漏時請立刻於 Firebase 重產生私鑰並更換 session secret（所有 session 會失效）。
@@ -426,10 +429,17 @@ campus-toolkit/
 3. commit，訊息結尾附上版本號，例：`…（版本號更新至 0.232）`。
 4. `git push`。
 
+CI（`.github/workflows/ci.yml`）會跑 `npm run lint` 與模組測試；維護者請在 GitHub
+**Settings → Branches** 把 `CI / verify` 設為 required status check。
+
 ## 文件
 
 - [`docs/資料模型.md`](docs/資料模型.md) — 資料模型
 - [`docs/`](docs/) — 身分名冊／使用者帳號批次範例檔（xlsx）與版面截圖
+- [`SECURITY.md`](SECURITY.md) — 漏洞回報方式與安全邊界
+- [`AGENTS.md`](AGENTS.md) — 模組信任模型（B+）、開發流程與 UI 規範
+- [module-sdk](https://github.com/takan003/module-sdk) — 模組開發 SDK（`module:check`／影子 tsc）
+- [campus-toolkit-marketplace](https://github.com/takan003/campus-toolkit-marketplace) — 模組市集
 
 ## 授權
 
