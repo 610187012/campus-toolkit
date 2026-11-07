@@ -1,7 +1,10 @@
+export type ModuleMarketStatus = "official" | "reviewed" | "experimental";
+
 export interface ModuleMarketEntry {
   id: string;
   name: string;
   description: string;
+  status?: ModuleMarketStatus;
   version: string;
   latestVersion?: string;
   minHostVersion?: string;
@@ -51,6 +54,10 @@ export function parseModuleMarketEntry(value: unknown): ModuleMarketEntry | null
   }
 
   const description = readString(entry.description) ?? "";
+  const status =
+    entry.status === "official" || entry.status === "reviewed" || entry.status === "experimental"
+      ? entry.status
+      : undefined;
   const repoUrl = readString(entry.repoUrl) ?? undefined;
   const downloadUrl = readString(entry.downloadUrl) ?? undefined;
   const checksumSha256 = readString(entry.checksumSha256) ?? undefined;
@@ -63,6 +70,7 @@ export function parseModuleMarketEntry(value: unknown): ModuleMarketEntry | null
     id,
     name,
     description,
+    status,
     version,
     latestVersion,
     minHostVersion,

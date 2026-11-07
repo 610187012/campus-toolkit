@@ -14,6 +14,7 @@ interface MarketModuleEntry {
   id: string;
   name: string;
   description: string;
+  status?: "official" | "reviewed" | "experimental";
   version: string;
   latestVersion?: string;
   minHostVersion?: string;
@@ -66,6 +67,15 @@ interface ToggleInstallResponse {
   commitUrl?: string;
   alreadyUninstalled?: boolean;
 }
+
+const MODULE_STATUS_META: Record<
+  NonNullable<MarketModuleEntry["status"]>,
+  { label: string; className: string }
+> = {
+  official: { label: "官方", className: "border-success/60 text-success" },
+  reviewed: { label: "已審核社群", className: "border-primary/60 text-primary" },
+  experimental: { label: "實驗", className: "border-warning/60 text-warning" },
+};
 
 function buildFallbackManualGuide(moduleId: string): NonNullable<InstallResponse["manualInstallGuide"]> {
   return {
@@ -607,6 +617,13 @@ export default function ModuleMarketPage() {
                         <p className="text-xs text-t3">{module.id}</p>
                       </div>
                       <div className="flex items-center gap-2">
+                        {module.status && (
+                          <span
+                            className={`text-xs border rounded px-2 py-1 ${MODULE_STATUS_META[module.status].className}`}
+                          >
+                            {MODULE_STATUS_META[module.status].label}
+                          </span>
+                        )}
                         <span className="text-xs border border-themed rounded px-2 py-1 text-t2">
                           v{module.version}
                         </span>
@@ -615,6 +632,11 @@ export default function ModuleMarketPage() {
                     </summary>
 
                     <div className="mt-3 space-y-3">
+                      {module.status === "experimental" && (
+                        <p className="rounded border border-warning/60 bg-warning/10 px-3 py-2 text-xs text-warning">
+                          實驗模組：未經審核，不建議在正式環境安裝。若仍要測試，請先備份資料並自行承擔風險。
+                        </p>
+                      )}
                       {module.releaseNotes && module.releaseNotes.length > 0 ? (
                         <div className="text-sm text-t2">
                           <p className="font-medium text-t1">v{module.version} 更新</p>
@@ -681,14 +703,18 @@ export default function ModuleMarketPage() {
                             className={`rounded px-3 py-1.5 text-xs ${
                               installingId === module.id || (isInstalled(module) && !hasUpdate(module))
                                 ? "border border-themed bg-muted text-t3 cursor-wait"
-                                : "btn-theme cursor-pointer"
+                                : module.status === "experimental"
+                                  ? "btn-danger cursor-pointer"
+                                  : "btn-theme cursor-pointer"
                             }`}
                             title={
                               installingId === module.id
                                 ? "處理中..."
                                 : isInstalled(module) && !hasUpdate(module)
                                   ? "已安裝"
-                                  : "安裝模組"
+                                  : module.status === "experimental"
+                                    ? "實驗模組：未經審核，不建議在正式環境安裝"
+                                    : "安裝模組"
                             }
                           >
                             {installingId === module.id
@@ -697,7 +723,9 @@ export default function ModuleMarketPage() {
                                 ? "已安裝"
                                 : hasUpdate(module)
                                   ? "更新"
-                                  : "安裝"}
+                                  : module.status === "experimental"
+                                    ? "仍要安裝"
+                                    : "安裝"}
                           </button>
                           {canUninstall && isInstalled(module) && (
                             <button
