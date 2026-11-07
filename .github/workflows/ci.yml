@@ -1,0 +1,42 @@
+name: CI
+
+# P0-5：production 安裝 commit 建立後、部署前的完整驗證。
+# 這個 workflow 跑 eslint＋tsc（npm run lint）與模組相關快速測試；
+# 請在 GitHub repo 設定 required status checks，讓部署平台等待 CI 通過。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint and typecheck
+        run: npm run lint
+
+      - name: Module signature tests
+        run: npm run module:signature-test
+
+      - name: Module install permission tests
+        run: npm run module:install-auth-test
+
+      - name: Module install chain tests
+        run: npm run module:install-chain-test

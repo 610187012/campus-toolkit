@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { findLockTreeMismatch, nextHostVersion } from "@/lib/module-install-verify";
 
 const GITHUB_API = "https://api.github.com";
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -167,6 +168,60 @@ async function readRemoteLockFile(
   return { sha: fileSha, lock: parseLockFile(decoded) };
 }
 
+/** 讀取遠端文字檔（Contents API）；不存在回 null */
+async function readRemoteTextFile(
+  token: string,
+  repoBase: string,
+  filePath: string,
+  ref: string
+): Promise<string | null> {
+  const file = await githubRequest(
+    token,
+    `${repoBase}/contents/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(ref)}`,
+    { allow404: true }
+  );
+  if (!file) return null;
+  const encoded = typeof file.content === "string" ? file.content : "";
+  if (!encoded) throw new Error(`讀取 ${filePath} 失敗（內容缺失）`);
+  return Buffer.from(encoded.replace(/\n/g, ""), "base64").toString("utf-8");
+}
+
+/**
+ * 產生 `src/version.json` 的 tree entry（P0-5）。
+ * production 安裝／卸載都要留下版本足跡；遠端版本檔缺失或格式不符時 fail-closed。
+ */
+async function createVersionTreeEntry(
+  token: string,
+  repoBase: string,
+  ref: string
+): Promise<Record<string, unknown>> {
+  const raw = await readRemoteTextFile(token, repoBase, "src/version.json", ref);
+  if (raw === null) {
+    throw new Error("遠端缺少 src/version.json，拒絕在未更新版本號的情況下變更模組");
+  }
+  const next = nextHostVersion(raw, new Date().toISOString().slice(0, 10));
+  const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+  const blob = await githubRequest(token, `${repoBase}/git/blobs`, {
+    method: "POST",
+    body: {
+      content: Buffer.from(
+        `${JSON.stringify(next, null, 2)}${trailingNewline}`,
+        "utf-8"
+      ).toString("base64"),
+      encoding: "base64",
+    },
+  });
+  if (!blob?.sha) {
+    throw new Error("建立 src/version.json blob 失敗");
+  }
+  return {
+    path: "src/version.json",
+    mode: "100644",
+    type: "blob",
+    sha: blob.sha,
+  };
+}
+
 export async function commitMarketplaceModuleInstall(
   input: CommitMarketplaceInstallInput
 ): Promise<CommitMarketplaceInstallResult> {
@@ -201,6 +256,8 @@ export async function commitMarketplaceModuleInstall(
 
   const lockRecord = await readRemoteLockFile(token, repoBase, baseBranch);
   const lock = lockRecord?.lock ?? { lockVersion: 1, modules: [] };
+  /** 變更前的遠端 lock 值，用於 lock ↔ 目錄一致性檢查 */
+  const remoteLockValues = lock.modules.map((item) => item.value);
   const sourceTag = input.sourceRef;
   const existingIndex = lock.modules.findIndex((item) => item.value === input.moduleId);
   const existing = existingIndex >= 0 ? lock.modules[existingIndex] : null;
@@ -243,11 +300,28 @@ export async function commitMarketplaceModuleInstall(
   const treeItems = Array.isArray(treePayload?.tree)
     ? (treePayload.tree as Array<{ path?: unknown; type?: unknown }>)
     : [];
+  const treePaths = treeItems
+    .filter((item) => item && item.type === "blob" && typeof item.path === "string")
+    .map((item) => String(item.path));
+  const mismatch = findLockTreeMismatch(remoteLockValues, treePaths);
+  if (mismatch) {
+    const detail = [
+      mismatch.missingDirs.length > 0
+        ? `lock 有登記但沒有資料夾：${mismatch.missingDirs.join("、")}`
+        : "",
+      mismatch.missingLock.length > 0
+        ? `有資料夾但 lock 沒登記：${mismatch.missingLock.join("、")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("；");
+    throw new Error(
+      `module.lock.json 與 src/modules 目錄不一致（${detail}）——請先修正遠端 repo 後再安裝`
+    );
+  }
 
   const targetPrefix = `src/modules/${input.moduleId}/`;
-  const existingModuleFiles = treeItems
-    .filter((item) => item && item.type === "blob" && typeof item.path === "string")
-    .map((item) => String(item.path))
+  const existingModuleFiles = treePaths
     .filter((pathValue) => pathValue.startsWith(targetPrefix));
 
   const incomingModulePaths = new Set(
@@ -295,6 +369,8 @@ export async function commitMarketplaceModuleInstall(
     type: "blob",
     sha: lockBlob.sha,
   });
+  // P0-5：安裝會修改主程式 repo，commit 內一併更新版本號
+  treeEntries.push(await createVersionTreeEntry(token, repoBase, baseBranch));
 
   const tree = await githubRequest(token, `${repoBase}/git/trees`, {
     method: "POST",
@@ -408,6 +484,8 @@ export async function commitMarketplaceModuleUninstall(
       sha: lockBlob.sha,
     });
   }
+  // P0-5：卸載同樣會修改主程式 repo，commit 內一併更新版本號
+  treeEntries.push(await createVersionTreeEntry(token, repoBase, baseBranch));
 
   const tree = await githubRequest(token, `${repoBase}/git/trees`, {
     method: "POST",

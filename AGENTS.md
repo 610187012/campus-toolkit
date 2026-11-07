@@ -128,6 +128,9 @@ E、F、G 又稱「外掛」、「外掛功能」；維護時流程相同，只�
 - 本機開發一律用 `module:link`（產物已 gitignore，不會進 git），與線上安裝互不相干。
 - 誤裝進上游時的補救：`git revert <該 commit>` 後 push 即可，**不需要重建任何 fork 或部署**；
   各校 fork 自行安裝的模組不受影響（同步後 git 會保留他們自己的安裝）。
+- production 自動安裝／卸載的 commit 會一併更新 `src/version.json`，commit 前檢查
+  lock ↔ 目錄一致性；全量 `npm run lint`（eslint＋tsc）由 CI 執行，部署平台應等待
+  required status checks。
 
 ### 模組信任模型與上架政策（B+）
 
