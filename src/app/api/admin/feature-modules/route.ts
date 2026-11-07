@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { requireAdminModule, toAuthResponse } from "@/lib/dal";
+import { requireAdminModule, requireModuleInstallAdmin, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
 import { enforceRateLimit, RATE } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
@@ -186,7 +186,7 @@ export async function DELETE(request: NextRequest) {
     );
     if (limited) return limited;
 
-    const { session, denial } = await requireAdminModule("modules");
+    const { session, denial } = await requireModuleInstallAdmin();
     if (denial) return toAuthResponse(denial);
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;

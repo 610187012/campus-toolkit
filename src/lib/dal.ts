@@ -22,6 +22,7 @@ import {
 import { isRoleEnabled } from "@/lib/role-settings";
 import { AdminModule, isAccountActive, USER_COLLECTION, UserRole } from "@/types/users";
 import { ManagedModuleGrant } from "@/types/roster";
+import { matchesModuleInstallAdmin, parseModuleInstallAdmins } from "@/lib/module-install-policy";
 
 /**
  * verifySession 回傳的 session 會掛上「同請求內已讀取」的資料：
@@ -215,6 +216,36 @@ export async function requireAdminModule(module: AdminModule): Promise<
   if (result.denial) return result;
   if (!(await hasAdminModule(result.session, module))) {
     return { session: null, denial: { status: 403, message: "此帳號未被指派該功能模組" } };
+  }
+  return result;
+}
+
+/**
+ * 模組安裝／卸載的指定管理員清單（`MODULE_MARKET_INSTALL_ADMINS`，選填）。
+ * 未設定＝所有具 `modules` 權限的管理員皆可（維持「全體管理員平等」政策）。
+ */
+export function moduleInstallAdminAllowlist(): string[] {
+  return parseModuleInstallAdmins(process.env.MODULE_MARKET_INSTALL_ADMINS);
+}
+
+/**
+ * 安裝／卸載模組的守門（P0-7）：
+ * 先要求 `modules` 權限，再用選填的 allowlist 限縮高風險操作。
+ * 未設定 allowlist 時與 requireAdminModule("modules") 相同。
+ */
+export async function requireModuleInstallAdmin(): Promise<
+  { session: SessionPayload; denial: null } | { session: null; denial: AuthDenial }
+> {
+  const result = await requireAdminModule("modules");
+  if (result.denial) return result;
+  if (!matchesModuleInstallAdmin(result.session, moduleInstallAdminAllowlist())) {
+    return {
+      session: null,
+      denial: {
+        status: 403,
+        message: "此帳號未被指派模組安裝／卸載權限，請洽系統管理員設定 MODULE_MARKET_INSTALL_ADMINS",
+      },
+    };
   }
   return result;
 }

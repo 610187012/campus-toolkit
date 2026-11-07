@@ -5,7 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import AdmZip from "adm-zip";
-import { isSuperAdmin, requireAdminModule, toAuthResponse } from "@/lib/dal";
+import { requireModuleInstallAdmin, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
 import { enforceRateLimit, RATE } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
@@ -281,15 +281,8 @@ export async function POST(request: NextRequest) {
     );
     if (limited) return limited;
 
-    const { session, denial } = await requireAdminModule("modules");
+    const { session, denial } = await requireModuleInstallAdmin();
     if (denial) return toAuthResponse(denial);
-
-    if (!(await isSuperAdmin(session))) {
-      return NextResponse.json(
-        { success: false, message: "僅超級管理員可安裝模組" },
-        { status: 403 }
-      );
-    }
 
     const isProduction = process.env.NODE_ENV === "production";
     const contentType = request.headers.get("content-type") ?? "";

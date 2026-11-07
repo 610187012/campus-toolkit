@@ -21,6 +21,7 @@
     "module:contract-test": "node scripts/test-module-contract.mjs",
     "module:sign": "node scripts/module-sign.mjs",
     "module:signature-test": "node scripts/test-module-signature.mjs",
+    "module:install-auth-test": "node scripts/test-module-install-auth.mjs",
     "version:bump": "node scripts/version.js"
   },
   "keywords": [],
