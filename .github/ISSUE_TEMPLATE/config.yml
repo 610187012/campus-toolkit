@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全性漏洞
+    url: https://github.com/takan003/campus-toolkit/security/advisories/new
+    about: 請勿公開張貼漏洞細節；使用 GitHub 私人安全回報
+  - name: 模組市集
+    url: https://github.com/takan003/campus-toolkit-marketplace
+    about: 模組投稿、上架與市集問題
+  - name: 模組開發 SDK
+    url: https://github.com/takan003/module-sdk
+    about: module:check、影子 tsc 與 manifest 問題

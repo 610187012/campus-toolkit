@@ -85,9 +85,14 @@ Settings → Branches → `main`：
 3. 通過才由維護者改成 `reviewed`／`official` 並 merge。
 4. 不通過就維持 `experimental` 或關閉 PR，並留下原因。
 
-## 六、建議但非必要
+## 六、已加入 repo 的項目
 
-- [ ] 加 `.github/CODEOWNERS`，讓 PR 自動指定 `@takan003` 審核
-- [ ] 加 issue templates（bug／feature）
+- [x] `.github/CODEOWNERS`（自動指定 `@takan003` 審核）
+- [x] `.github/ISSUE_TEMPLATE/`（bug／feature／contact links）
+- [x] GitHub Actions 已 pin 到 commit SHA（checkout／setup-node／pages 系列）
+
+## 七、可選
+
 - [ ] 開啟 Discussions（若要讓使用者社群討論）
-- [ ] 把 Actions 從 `@v4` 改成 SHA pin（供應鏈硬化）
+- [ ] 設定 Dependabot 自動更新 GitHub Actions（更新後仍會是 SHA pin）
+

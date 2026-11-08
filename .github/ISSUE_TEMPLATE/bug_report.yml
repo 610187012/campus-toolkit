@@ -1,0 +1,53 @@
+name: 問題回報
+description: 回報主程式（campus-toolkit）的 bug 或異常行為
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        請勿在此回報安全漏洞；請依 SECURITY.md 使用 GitHub 私人安全回報。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 發生什麼事
+      description: 請描述實際行為與預期行為
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重現步驟
+      placeholder: |
+        1. 前往…
+        2. 點選…
+        3. 看到…
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 主程式版本
+      description: 見 src/version.json 或頁面右下角
+      placeholder: "0.653"
+    validations:
+      required: true
+  - type: dropdown
+    id: deploy
+    attributes:
+      label: 部署方式
+      options:
+        - Vercel
+        - Firebase App Hosting
+        - 本機開發
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相關紀錄
+      description: 請先移除個資、token、服務帳號金鑰
+      render: shell
+    validations:
+      required: false
