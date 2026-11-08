@@ -647,7 +647,7 @@ function renderActionsFile(manifests) {
 
 const ADAPTER_HEADER = [
   `// ⚠️ ${ADAPTER_MARKER}：由 scripts/build-module-registry.mjs 依 manifest routes 自動產生，請勿手改。`,
-  "// 模組實體（src/modules/<value>/<路徑>/…）才是本體；本檔只是 re-export 掛載點。",
+  "// 模組實體（src/modules/<value>/<路徑>/…）才是本體；本檔是掛載點（API 會包上 runtime wrapper）。",
   "",
 ].join("\n");
 const PAGE_ENTITIES = ["page.tsx", "page.ts", "page.jsx", "page.js"];
@@ -664,6 +664,55 @@ function writeAdapter(file, body) {
   if (fs.existsSync(file) && fs.readFileSync(file, "utf-8") === content) return;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content, "utf-8");
+}
+
+const ROUTE_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+const ROUTE_CONFIG_EXPORTS = [
+  "dynamic",
+  "revalidate",
+  "runtime",
+  "fetchCache",
+  "preferredRegion",
+  "maxDuration",
+];
+
+function exportsName(source, name) {
+  return (
+    new RegExp(`\\bexport\\s+(?:async\\s+)?function\\s+${name}\\b`).test(source) ||
+    new RegExp(`\\bexport\\s+(?:const|let|var)\\s+${name}\\b`).test(source) ||
+    new RegExp(`\\bexport\\s*\\{[^}]*\\b${name}\\b[^}]*\\}`).test(source)
+  );
+}
+
+/**
+ * API 轉接檔（P0-8）：把模組 handler 包上宿主 runtime wrapper。
+ * 只包裹實際存在的 HTTP method；Next route config 以 re-export 保留。
+ * 找不到 method（罕見寫法）時退回 `export *`，避免掛不起來。
+ */
+function renderApiAdapter(moduleValue, targetRel, sourcePath) {
+  const source = fs.readFileSync(sourcePath, "utf-8");
+  const methods = ROUTE_METHODS.filter((name) => exportsName(source, name));
+  if (methods.length === 0) {
+    return `export * from "@/modules/${moduleValue}/${targetRel}/route";\n`;
+  }
+  const configs = ROUTE_CONFIG_EXPORTS.filter((name) => exportsName(source, name));
+  const lines = [
+    `import * as handlers from "@/modules/${moduleValue}/${targetRel}/route";`,
+    `import { withModuleRuntime } from "@/lib/module-runtime";`,
+    "",
+    ...methods.map(
+      (method) =>
+        `export const ${method} = withModuleRuntime(${JSON.stringify(moduleValue)}, handlers.${method});`
+    ),
+  ];
+  if (configs.length > 0) {
+    lines.push(
+      "",
+      `export { ${configs.join(", ")} } from "@/modules/${moduleValue}/${targetRel}/route";`
+    );
+  }
+  lines.push("");
+  return lines.join("\n");
 }
 
 function pruneEmptyDirs(startDir) {
@@ -742,11 +791,12 @@ function syncAdapters(manifests) {
           wanted.add(layoutRel);
         }
       } else {
-        if (!findEntity(entityDir, ROUTE_ENTITIES)) continue;
+        const entity = findEntity(entityDir, ROUTE_ENTITIES);
+        if (!entity) continue;
         const routeRel = `${targetRel}/route.ts`;
         writeAdapter(
           path.join(adapterDir, "route.ts"),
-          `export * from "@/modules/${m.value}/${targetRel}/route";\n`
+          renderApiAdapter(m.value, targetRel, path.join(entityDir, entity))
         );
         wanted.add(routeRel);
       }

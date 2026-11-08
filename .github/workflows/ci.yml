@@ -43,3 +43,6 @@ jobs:
 
       - name: Module data scope tests
         run: npm run module:db-scope-test
+
+      - name: Module runtime policy tests
+        run: npm run module:runtime-test
