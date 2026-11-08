@@ -421,23 +421,30 @@ campus-toolkit/
 
 ## 貢獻與開發流程
 
-歡迎送 Pull Request。本專案的 commit 規範如下（詳見 [`AGENTS.md`](AGENTS.md)）：
+**主程式採封閉維護**：只有 takan003 與信任團隊可以開 PR／merge；**不接受外部 PR**。
+其他人可以 fork 本 repo 自行維護，或把模組投稿到模組市集。詳見
+[`CONTRIBUTING.md`](CONTRIBUTING.md)。
+
+團隊成員的 commit 規範如下（詳見 [`AGENTS.md`](AGENTS.md)）：
 
 1. `npm run lint`（ESLint + tsc）確認通過。
 2. `npm run version:bump` — 依 commit 數將版本號 +1，寫入 `src/version.json`（`dev`/`build` 不重算，
    各環境一律讀這份已 commit 的檔案，本機與分支部署的版本號才會一致）。
 3. commit，訊息結尾附上版本號，例：`…（版本號更新至 0.232）`。
-4. `git push`。
+4. `git push` 並開 PR。
 
 CI（`.github/workflows/ci.yml`）會跑 `npm run lint` 與模組測試；維護者請在 GitHub
-**Settings → Branches** 把 `CI / verify` 設為 required status check。
+**Settings → Branches** 把 `CI / verify` 設為 required status check。完整設定見
+[`docs/GitHub設定清單.md`](docs/GitHub設定清單.md)。
 
 ## 文件
 
 - [`docs/資料模型.md`](docs/資料模型.md) — 資料模型
 - [`docs/`](docs/) — 身分名冊／使用者帳號批次範例檔（xlsx）與版面截圖
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — 主程式封閉維護與模組開發入口
 - [`SECURITY.md`](SECURITY.md) — 漏洞回報方式與安全邊界
 - [`AGENTS.md`](AGENTS.md) — 模組信任模型（B+）、開發流程與 UI 規範
+- [`docs/GitHub設定清單.md`](docs/GitHub設定清單.md) — branch protection／required checks 等手動設定
 - [module-sdk](https://github.com/takan003/module-sdk) — 模組開發 SDK（`module:check`／影子 tsc）
 - [campus-toolkit-marketplace](https://github.com/takan003/campus-toolkit-marketplace) — 模組市集
 
