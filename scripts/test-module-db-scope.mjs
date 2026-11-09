@@ -147,7 +147,9 @@ assert.throws(() => rosterDoc.collection("sub").doc("x").set({}), /唯讀/);
 const personalDoc = scoped.doc("studentPersonalInfo/u1");
 await personalDoc.get();
 assert.throws(() => personalDoc.set({}), /唯讀/);
-assert.deepEqual(await scoped.getAll(personalDoc), [{ path: "studentPersonalInfo/u1" }]);
+const all = await scoped.getAll(personalDoc);
+assert.equal(all.length, 1, "getAll 應回傳一筆");
+assert.equal(all[0].path, "studentPersonalInfo/u1", "getAll 回傳路徑應正確");
 
 // snapshot.ref 也不能逃逸
 const personalSnapshot = await personalDoc.get();
