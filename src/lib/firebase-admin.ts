@@ -194,7 +194,13 @@ function instrumentQueryLike<T extends Query | CollectionReference>(
       }
       if (prop === "doc" && t instanceof Object && "doc" in t) {
         const original = (t as CollectionReference).doc.bind(t as CollectionReference);
-        return (id: string) => instrumentDoc(original(id), collectionName);
+        // `.doc()` 不帶參數時由 Firestore 自動產生 id；不可傳入 undefined，
+        // 否則 Admin SDK 會把 undefined 當成 documentPath 而拋錯（F 建立場次 500 的根因）。
+        return (...args: unknown[]) =>
+          instrumentDoc(
+            args.length === 0 ? original() : original(args[0] as string),
+            collectionName
+          );
       }
       if (prop === "add") {
         const original = (t as CollectionReference).add.bind(t as CollectionReference);
