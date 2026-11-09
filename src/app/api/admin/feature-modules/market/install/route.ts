@@ -17,6 +17,9 @@ export const dynamic = "force-dynamic";
 
 /** 套件下載上限（bytes）：市集第一期上限 500KB＋緩衝＝1MB【附錄 A #11】 */
 const MAX_ARCHIVE_BYTES = 1024 * 1024;
+/** 解壓後上限：避免 zip bomb（壓縮 500KB 可能膨脹到數 GB） */
+const MAX_EXTRACTED_BYTES = 10 * 1024 * 1024;
+const MAX_EXTRACTED_FILES = 2000;
 /** 正式上架／安裝的套件上限（壓縮後 500KB） */
 const MARKET_PACKAGE_LIMIT = 500 * 1024;
 const MODULE_VALUE_RE = /^[a-z][A-Za-z0-9]*$/;
@@ -231,18 +234,81 @@ async function downloadToTemp(
   };
 }
 
+function assertSafeArchiveEntry(name: string): void {
+  const normalized = String(name)
+    .replace(/\\/g, "/")
+    .replace(/^\.\/+/, "")
+    .replace(/\/+$/, "");
+  if (!normalized || normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized)) {
+    throw new Error(`壓縮檔含非法絕對路徑：${name}`);
+  }
+  const segments = normalized.split("/");
+  if (segments.some((segment) => segment === ".." || segment === "")) {
+    throw new Error(`壓縮檔含路徑穿越（zip slip）：${name}`);
+  }
+}
+
+function assertExtractedTree(root: string): void {
+  let fileCount = 0;
+  let totalBytes = 0;
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      const relative = path.relative(root, full);
+      if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+        throw new Error("壓縮檔含路徑穿越（zip slip），拒絕安裝");
+      }
+      if (entry.isSymbolicLink()) {
+        throw new Error("壓縮檔含 symbolic link，拒絕安裝");
+      }
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile()) {
+        fileCount += 1;
+        if (fileCount > MAX_EXTRACTED_FILES) {
+          throw new Error(`解壓後檔案數過多（超過 ${MAX_EXTRACTED_FILES} 個），拒絕安裝`);
+        }
+        totalBytes += fs.statSync(full).size;
+        if (totalBytes > MAX_EXTRACTED_BYTES) {
+          throw new Error(
+            `解壓後過大（超過 ${MAX_EXTRACTED_BYTES / 1024 / 1024}MB），拒絕安裝`
+          );
+        }
+      }
+    }
+  };
+  walk(root);
+}
+
 function extractArchive(filePath: string, extension: string): string {
   const dir = path.dirname(filePath);
 
   if (extension === ".zip") {
     try {
       const zip = new AdmZip(filePath);
+      let declaredBytes = 0;
+      for (const entry of zip.getEntries()) {
+        assertSafeArchiveEntry(entry.entryName);
+        const size = Number((entry.header as { size?: unknown } | undefined)?.size ?? 0);
+        if (Number.isFinite(size) && size > 0) declaredBytes += size;
+        if (declaredBytes > MAX_EXTRACTED_BYTES) {
+          throw new Error(`解壓後過大（超過 ${MAX_EXTRACTED_BYTES / 1024 / 1024}MB），拒絕安裝`);
+        }
+      }
       zip.extractAllTo(dir, true);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(`ZIP 解壓失敗（adm-zip）：${detail}`);
     }
   } else {
+    const listResult = spawnSync("tar", ["-tzf", filePath], { encoding: "utf-8" });
+    if (listResult.status !== 0) {
+      throw new Error("tar 無法列出壓縮檔內容，拒絕安裝");
+    }
+    for (const line of (listResult.stdout || "").split("\n")) {
+      const name = line.trim();
+      if (name) assertSafeArchiveEntry(name);
+    }
     const result = spawnSync("tar", ["-xzf", filePath, "-C", dir], { encoding: "utf-8" });
     if (result.status !== 0) {
       const detail = result.error?.message || result.stderr?.toString() || result.stdout?.toString() || "";
@@ -250,6 +316,7 @@ function extractArchive(filePath: string, extension: string): string {
     }
   }
 
+  assertExtractedTree(dir);
   return dir;
 }
 

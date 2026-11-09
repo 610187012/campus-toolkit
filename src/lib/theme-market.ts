@@ -426,6 +426,24 @@ export function extractThemeZip(filePath: string): string {
 
   try {
     const zip = new AdmZip(filePath);
+    let declaredBytes = 0;
+    for (const entry of zip.getEntries()) {
+      const name = String(entry.entryName)
+        .replace(/\\/g, "/")
+        .replace(/^\.\/+/, "")
+        .replace(/\/+$/, "");
+      if (!name || name.startsWith("/") || /^[A-Za-z]:/.test(name)) {
+        throw new Error(`主題包含非法絕對路徑：${entry.entryName}`);
+      }
+      if (name.split("/").some((segment) => segment === ".." || segment === "")) {
+        throw new Error(`主題包含路徑穿越（zip slip）：${entry.entryName}`);
+      }
+      const size = Number((entry.header as { size?: unknown } | undefined)?.size ?? 0);
+      if (Number.isFinite(size) && size > 0) declaredBytes += size;
+      if (declaredBytes > MAX_EXTRACTED_BYTES) {
+        throw new Error(`主題包解壓後過大（超過 ${MAX_EXTRACTED_BYTES / 1024 / 1024}MB），拒絕安裝`);
+      }
+    }
     zip.extractAllTo(dir, true);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);

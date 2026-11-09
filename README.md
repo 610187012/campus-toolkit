@@ -443,6 +443,7 @@ CI（`.github/workflows/ci.yml`）會跑 `npm run lint` 與模組測試；維護
 - [`docs/`](docs/) — 身分名冊／使用者帳號批次範例檔（xlsx）與版面截圖
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — 主程式封閉維護與模組開發入口
 - [`SECURITY.md`](SECURITY.md) — 漏洞回報方式與安全邊界
+- [`docs/安全檢查與修補.md`](docs/安全檢查與修補.md) — 公開前安全檢查、已修補項目與殘餘風險
 - [`AGENTS.md`](AGENTS.md) — 模組信任模型（B+）、開發流程與 UI 規範
 - [`docs/GitHub設定清單.md`](docs/GitHub設定清單.md) — branch protection／required checks 等手動設定
 - [`docs/公開前檢查表.md`](docs/公開前檢查表.md) — 發布當天照著打勾的操作清單

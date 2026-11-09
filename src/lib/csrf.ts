@@ -23,9 +23,35 @@ export function assertSameOrigin(request: NextRequest): NextResponse | null {
     );
   }
 
+  // 若部署有設定 APP_BASE_URL，只接受該網域（避免 X-Forwarded-Host 被偽造）。
+  const configuredBase = process.env.APP_BASE_URL?.trim();
+  if (configuredBase) {
+    try {
+      const allowedHost = new URL(configuredBase).host;
+      if (host !== allowedHost && url.host !== allowedHost) {
+        return NextResponse.json(
+          { success: false, message: "請求來源無效" },
+          { status: 403 }
+        );
+      }
+    } catch {
+      // APP_BASE_URL 格式錯誤時不額外阻擋；部署檢查應另外驗證。
+    }
+  }
+
   const origin = request.headers.get("origin");
   const referer = request.headers.get("referer");
   const source = origin || referer;
+
+  // 瀏覽器額外防線：跨站／同站（子網域）發起的寫入一律拒絕。
+  // 舊瀏覽器可能沒有這個標頭，仍由 Origin／Referer 檢查把關。
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none") {
+    return NextResponse.json(
+      { success: false, message: "跨來源請求被拒絕" },
+      { status: 403 }
+    );
+  }
 
   // 無 Origin/Referer（非瀏覽器用戶端）→ 拒絕寫入請求
   if (!source) {

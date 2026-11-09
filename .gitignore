@@ -17,6 +17,15 @@ dist/
 # misc
 .DS_Store
 *.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+.npmrc
+.netrc
+id_rsa
+id_ed25519
 
 # Excel 暫存鎖定檔（docs/範例_*.xlsx 開啟中產生的 ~$ 檔）
 ~$*.xlsx
