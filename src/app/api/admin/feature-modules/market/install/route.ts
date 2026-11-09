@@ -309,6 +309,18 @@ function extractArchive(filePath: string, extension: string): string {
       const name = line.trim();
       if (name) assertSafeArchiveEntry(name);
     }
+    // tar 沒有像 zip 的 entry header 可直接讀，改用 -tvzf 的 size 欄位做解壓炸彈上限。
+    const verboseResult = spawnSync("tar", ["-tvzf", filePath], { encoding: "utf-8" });
+    if (verboseResult.status === 0) {
+      let declaredBytes = 0;
+      for (const line of (verboseResult.stdout || "").split("\n")) {
+        const size = Number(/^\S+\s+\S+\s+(\d+)\s/.exec(line.trim())?.[1] ?? NaN);
+        if (Number.isFinite(size)) declaredBytes += size;
+        if (declaredBytes > MAX_EXTRACTED_BYTES) {
+          throw new Error(`解壓後過大（超過 ${MAX_EXTRACTED_BYTES / 1024 / 1024}MB），拒絕安裝`);
+        }
+      }
+    }
     const result = spawnSync("tar", ["-xzf", filePath, "-C", dir], { encoding: "utf-8" });
     if (result.status !== 0) {
       const detail = result.error?.message || result.stderr?.toString() || result.stdout?.toString() || "";
