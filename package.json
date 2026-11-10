@@ -26,6 +26,8 @@
     "module:sandbox-e-write-test": "node scripts/test-sandbox-e-write.mjs",
     "module:sandbox-e-submit-test": "node scripts/test-sandbox-e-submit.mjs",
     "module:sandbox-e-canva-test": "node scripts/test-sandbox-e-canva.mjs",
+    "module:sandbox-e-parent-export-test": "node scripts/test-sandbox-e-parent-export.mjs",
+    "module:sandbox-e-staff-test": "node scripts/test-sandbox-e-staff.mjs",
     "module:materialize-test": "node scripts/test-materialize-modules.mjs",
     "module:capability-test": "node scripts/test-module-capability-scan.mjs",
     "module:install": "node scripts/module-cli.mjs install",

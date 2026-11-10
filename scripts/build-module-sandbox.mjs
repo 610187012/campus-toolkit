@@ -139,9 +139,24 @@ class Database {
   async runTransaction(fn) {
     const ops = [];
     const tx = {
-      async get(ref) {
-        const result = await rpc("db.doc.get", { collection: ref.collection, id: ref.id });
-        return { exists: result.exists, id: ref.id, data: () => result.data };
+      async get(target) {
+        if (target instanceof Query) {
+          const result = await rpc("db.query", {
+            collection: target.collection,
+            filters: target.filters,
+            orderBy: target.order,
+            limit: target.limitValue,
+            select: target.selected,
+          });
+          const docs = result.rows.map((row) => ({
+            id: row.id,
+            data: () => row.data,
+            ref: new DocRef(target.collection, row.id),
+          }));
+          return { docs, size: docs.length, empty: docs.length === 0 };
+        }
+        const result = await rpc("db.doc.get", { collection: target.collection, id: target.id });
+        return { exists: result.exists, id: target.id, data: () => result.data };
       },
       set(ref, data) { ops.push({ type: "set", collection: ref.collection, id: ref.id, data }); },
       update(ref, data) { ops.push({ type: "update", collection: ref.collection, id: ref.id, data }); },
