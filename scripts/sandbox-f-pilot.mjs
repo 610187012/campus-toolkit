@@ -23,6 +23,7 @@ const swc = requireHost("next/dist/build/swc");
 
 const MODULE_ROOT = path.join(ROOT, "src", "modules", "examRegistration");
 const ENTRY = path.join(MODULE_ROOT, "api", "admin", "exam-registration", "route.ts");
+const XLSX_PATH = path.join(ROOT, "node_modules", "xlsx", "xlsx.mjs");
 const MANIFEST = JSON.parse(
   fs.readFileSync(path.join(MODULE_ROOT, "module.json"), "utf-8").replace(/^\uFEFF/, "")
 );
@@ -51,6 +52,19 @@ function parseClause(clause) {
   if (before.replace(/\*/g, "").replace(/,/g, "").trim()) hasDefault = true;
   if (/\*\s*as\s+/.test(clause)) namespace = true;
   return { names, hasDefault, namespace };
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function rewriteSpecifier(code, from, to) {
+  const escaped = escapeRegExp(from);
+  const replacer = (match, prefix, quote) => `${prefix}${quote}${to}${quote}`;
+  return code
+    .replace(new RegExp(`(from\\s*)(["'])${escaped}\\2`, "g"), replacer)
+    .replace(new RegExp(`(import\\s*\\(\\s*)(["'])${escaped}\\2`, "g"), replacer)
+    .replace(new RegExp(`(import\\s*)(["'])${escaped}\\2`, "g"), replacer);
 }
 
 function resolveRelative(fromFile, spec) {
@@ -150,7 +164,7 @@ while (queue.length > 0) {
   }
 
   for (const [from, to] of replacements) {
-    next = next.replaceAll(`"${from}"`, `"${to}"`).replaceAll(`'${from}'`, `'${to}'`);
+    next = rewriteSpecifier(next, from, to);
   }
   fs.writeFileSync(outFile, next);
 }
@@ -297,7 +311,13 @@ export class NextResponse {
   constructor(body, init = {}) {
     this.status = init.status ?? 200;
     this.headers = init.headers ?? {};
-    this.body = typeof body === "string" ? body : "";
+    this.body =
+      typeof body === "string"
+        ? body
+        : body instanceof Uint8Array || Buffer.isBuffer(body)
+          ? Buffer.from(body).toString("base64")
+          : "";
+    this.binary = typeof body !== "string" && (body instanceof Uint8Array || Buffer.isBuffer(body));
   }
   static json(body, init = {}) {
     return new NextResponse(JSON.stringify(body), init);
@@ -384,6 +404,24 @@ export function schoolWideAudience(roles) {
 }
 `;
 
+const SETTINGS_SHIM = `
+export async function getCurrentPeriod() {
+  return { academicYear: 114, semester: 1 };
+}
+export async function getCacheTtlSeconds() {
+  return 30;
+}
+`;
+
+const ROSTER_LIB_SHIM = `
+export function isActiveEntry() {
+  return true;
+}
+export async function loadPeriodEntries() {
+  return new Map();
+}
+`;
+
 const KNOWN_SHIMS = {
   "next/server": NEXT_SERVER_SHIM,
   "@/lib/module-db": DB_SHIM,
@@ -398,6 +436,8 @@ const KNOWN_SHIMS = {
   "@/lib/announcements": ANNOUNCEMENTS_SHIM,
   "@/lib/calendar": CALENDAR_SHIM,
   "@/types/announcements": ANNOUNCEMENT_TYPES_SHIM,
+  "@/lib/settings-server": SETTINGS_SHIM,
+  "@/lib/roster": ROSTER_LIB_SHIM,
 };
 
 function generateShims() {
@@ -405,6 +445,10 @@ function generateShims() {
     const filePath = path.join(shimDir, shimFileName(spec));
     if (fs.existsSync(filePath)) continue;
     let code = KNOWN_SHIMS[spec] ?? "";
+    if (spec === "xlsx" && fs.existsSync(XLSX_PATH)) {
+      const url = `file:///${XLSX_PATH.replace(/\\/g, "/")}`;
+      code = `export * from ${JSON.stringify(url)};\n`;
+    }
     const exported = new Set();
     for (const match of code.matchAll(/export\s+(?:async\s+)?(?:function|const|class)\s+([A-Za-z0-9_$]+)/g)) {
       exported.add(match[1]);
@@ -490,6 +534,24 @@ function createDb() {
           examType: "mock",
           examDate: "2026-01-10",
           examEndDate: "2026-01-10",
+          location: "",
+          locationOptions: [],
+          note: "",
+          deadline: Date.now() + 86400000,
+          registrationOpenAt: 0,
+          subjects: [{ key: "chinese", label: "國文" }],
+          target: { grades: ["1"], classes: [] },
+          basicFee: { standard: 0, reduced: 0 },
+          examMode: "review",
+          registrationMode: "optional",
+          studentArchiveEnabled: false,
+          announcementSync: { enabled: false, categoryId: "other", body: "" },
+          calendarSync: {
+            enabled: false,
+            categoryId: "other",
+            publishUnit: "",
+            location: "",
+          },
           status: "open",
           updatedAt: 1,
           createdAt: 1,
@@ -521,9 +583,61 @@ function createDb() {
       },
     ],
     examRegistrations: [
-      { id: "r1", data: { eventId: "e1", studentUid: "s1" } },
-      { id: "r2", data: { eventId: "e1", studentUid: "s2" } },
+      {
+        id: "r1",
+        data: {
+          eventId: "e1",
+          studentUid: "s1",
+          studentClass: "101",
+          studentGrade: "1",
+          studentName: "王小明",
+          seatNo: "1",
+        },
+      },
+      {
+        id: "r2",
+        data: {
+          eventId: "e1",
+          studentUid: "s2",
+          studentClass: "101",
+          studentGrade: "1",
+          studentName: "李小花",
+          seatNo: "2",
+        },
+      },
       { id: "r3", data: { eventId: "e2", studentUid: "s3" } },
+    ],
+    rosterStudents: [
+      {
+        id: "s1",
+        data: {
+          uid: "s1",
+          academicYear: 114,
+          semester: 1,
+          grade: "1",
+          classCode: "101",
+          className: "一年一班",
+          name: "王小明",
+          studentId: "S001",
+          seatNo: "1",
+          rollNo: "10101",
+        },
+      },
+      {
+        id: "s2",
+        data: {
+          uid: "s2",
+          academicYear: 114,
+          semester: 1,
+          grade: "1",
+          classCode: "101",
+          className: "一年一班",
+          name: "李小花",
+          studentId: "S002",
+          seatNo: "2",
+          rollNo: "10102",
+        },
+      },
     ],
     __hooks: [],
   };
@@ -648,7 +762,7 @@ function runSandbox(requestPath, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ["--permission", `--allow-fs-read=${temp}`, path.join(temp, "runner.mjs")],
+      ["--permission", `--allow-fs-read=${temp}`, `--allow-fs-read=${XLSX_PATH}`, path.join(temp, "runner.mjs")],
       {
         cwd: ROOT,
         env: { PATH: process.env.PATH ?? "" },
@@ -823,8 +937,27 @@ try {
     assert.ok(hook.payload.sourceRef);
   }
 
+  // 匯出窗口：CSV 匯出應包含名冊學生
+  const exportDb = createDb();
+  const csvRun = await runSandbox(
+    "/api/admin/exam-registration?eventId=e1&format=csv",
+    { method: "GET", db: exportDb }
+  );
+  assert.equal(csvRun.response.status, 200, csvRun.response.body);
+  assert.ok(csvRun.response.body.includes("王小明"), csvRun.response.body);
+  assert.ok(csvRun.response.body.includes("李小花"), csvRun.response.body);
+
+  const xlsxRun = await runSandbox(
+    "/api/admin/exam-registration?eventId=e1&format=xlsx&scope=registered&schoolExamCode=TEST&registrationNumberField=rollNo",
+    { method: "GET", db: createDb() }
+  );
+  assert.equal(xlsxRun.response.status, 200, String(xlsxRun.response.body).slice(0, 120));
+  assert.equal(xlsxRun.response.binary, true);
+  const xlsxBuffer = Buffer.from(xlsxRun.response.body, "base64");
+  assert.equal(xlsxBuffer.subarray(0, 2).toString(), "PK", "XLSX 應為 zip 格式");
+
   process.stdout.write(
-    "[sandbox-f-pilot] F 真正的 count／列表／建立／更新／刪除（含批次）／掛勾已在 --permission 子程序跑通\n"
+    "[sandbox-f-pilot] F 真正的 count／列表／建立／更新／刪除（含批次）／掛勾／CSV／XLSX 已在 --permission 子程序跑通\n"
   );
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
