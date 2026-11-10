@@ -86,6 +86,9 @@ new Function("require", "module", "exports", code)(
     if (name === "@/lib/audit") {
       return { getClientIp: () => "127.0.0.1" };
     }
+    if (name === "@/lib/module-secret") {
+      return { moduleSecret: () => "module-secret" };
+    }
     if (name === "@/lib/module-sandbox/host") {
       return { createHostRpc: () => fakeRpc };
     }

@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/dal";
 import { getClientIp } from "@/lib/audit";
+import { moduleSecret } from "@/lib/module-secret";
 import { createHostRpc } from "@/lib/module-sandbox/host";
 
 /**
@@ -192,6 +193,9 @@ export async function runSandboxedRequest(options: {
         NODE_ENV: process.env.NODE_ENV ?? "production",
         MODULE_SANDBOX_ROUTE: routeFile,
         SANDBOX_CLIENT_IP: options.clientIp ?? "",
+        // 過渡期相容：讓仍讀 process.env.SESSION_SECRET 的模組拿到「模組專屬」
+        // 密鑰，而不是宿主真正用來簽 session 的 SESSION_SECRET。
+        SESSION_SECRET: moduleSecret(options.moduleValue, "session"),
       },
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     });
