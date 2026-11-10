@@ -108,6 +108,21 @@ E、F、G 又稱「外掛」、「外掛功能」；維護時流程相同，只�
 1. 請針對 A「主程式」進行修改。
 1. 修改完成後 push A「主程式」，請勿將本機掛載安裝的選用功能模組 push 上去。
 
+**「轉移陣地」指令**，實施流程（把目前進度與重要文件推到遠端，讓另一台電腦可接續）：
+
+此指令視為對 workspace 內「有未提交變更」專案的 commit／push 授權；但不得因此推送敏感檔案或掛載產物。
+
+<details open>
+<summary>轉移範圍與安全檢查</summary>
+
+1. 先盤點 workspace 內各專案（A／B／C／E／F／G）的 `git status` 與 remote；只處理有未提交變更的專案，沒有變更的跳過，並確認 push 目的地是本人的 fork／正確 repo。
+1. 逐專案檢視 diff，確認變更用途；無法判斷或涉及敏感資料時先詢問，不自行丟棄、覆蓋或硬推。
+1. 重要文件一律納入：`AGENTS.md`、`README.md`、`SECURITY.md`、`CONTRIBUTING.md`、`docs/**/*.md`（規劃書、待辦清單、設計文件、檢查表）。這些文件即使沒有程式碼變更，也要 commit＋push。
+1. 下列內容不得推送：`.env*`、服務帳號金鑰、token、密碼、個資、備份檔、`node_modules/`、`.next/`、`.module-sandbox/`、`src/modules/*/` 掛載產物、`module.lock.local.json`。含弱點細節或攻擊手法的文件（例如 `docs/模組架構公開前診斷.md`）預設不進公開 repo；改用私有 repo、加密壓縮或隨身碟，並在回報中標示「未推送」。
+1. commit 後逐專案 push；A 若含程式碼變更，依「修改完成後的流程」跑 lint／version bump，純文件變更不 bump。最後回報各專案的 branch、commit hash、push 結果與未推送清單，另一台電腦 pull 後以 `git status` 確認乾淨。
+
+</details>
+
 ### 貢獻者規範（必讀）
 
 1. 未經本人明確允許，**不得在「Contributors」自行新增任何貢獻者**——包含但不限於
