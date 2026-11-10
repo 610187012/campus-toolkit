@@ -235,7 +235,7 @@ export interface AccountRecord {
   preferredRole?: UserRole;
   /** 兩階段驗證方式，缺省視為 off */
   twoFactor?: TwoFactorMethod;
-  /** TOTP Base32 密鑰（twoFactor=totp 時使用） */
+  /** TOTP Base32 密鑰（twoFactor=totp 時使用；靜態加密後存放，讀取時解密） */
   totpSecret?: string;
   /** Email OTP：只存 sha256(uid:code)，有效期限與寄送節流 */
   otpHash?: string;

@@ -2,6 +2,11 @@ import "server-only";
 import { createHash, randomBytes } from "crypto";
 import type { DocumentReference, DocumentData } from "firebase-admin/firestore";
 import { verifyTotpCode, generateTotpSecret } from "@/lib/totp";
+import {
+  decryptTotpSecret,
+  encryptTotpSecret,
+  isEncryptedTotpSecret,
+} from "@/lib/totp-secret-crypto";
 import { isMailConfigured, sendLoginOtpEmail, sendLoginNotificationEmail } from "@/lib/mailer";
 import { getMailIdentity } from "@/lib/settings-server";
 import { normalizeEmail } from "@/lib/validation";
@@ -68,7 +73,7 @@ export function generateOtp(): string {
 
 export interface TwoFactorProfile {
   method: TwoFactorMethod;
-  /** TOTP Base32 密鑰（method !== "totp" 時可能為空） */
+  /** TOTP Base32 密鑰（已解密；method !== "totp" 時可能為空） */
   totpSecret: string;
 }
 
@@ -76,19 +81,26 @@ export function readTwoFactorProfile(data: DocumentData | undefined): TwoFactorP
   const raw = data?.twoFactor;
   const method: TwoFactorMethod =
     raw === "email_notify" || raw === "email_otp" || raw === "totp" ? raw : "off";
-  const secret = typeof data?.totpSecret === "string" ? data.totpSecret : "";
+  const secret = decryptTotpSecret(data?.totpSecret);
   return { method, totpSecret: secret };
 }
 
-/** 讀取並產生 TOTP 密鑰（首次啟用驗證碼APP時呼叫，寫回文件） */
+/** 讀取並產生 TOTP 密鑰（首次啟用驗證碼APP時呼叫，加密後寫回文件） */
 export async function ensureTotpSecret(
   ref: DocumentReference,
   data: DocumentData
 ): Promise<string> {
-  const existing = typeof data?.totpSecret === "string" ? data.totpSecret : "";
-  if (existing) return existing;
+  const stored = data?.totpSecret;
+  const existing = decryptTotpSecret(stored);
+  if (existing) {
+    // 舊版明文：下次使用時順手遷移成密文
+    if (typeof stored === "string" && !isEncryptedTotpSecret(stored)) {
+      await ref.set({ totpSecret: encryptTotpSecret(existing) }, { merge: true });
+    }
+    return existing;
+  }
   const secret = generateTotpSecret();
-  await ref.set({ totpSecret: secret }, { merge: true });
+  await ref.set({ totpSecret: encryptTotpSecret(secret) }, { merge: true });
   return secret;
 }
 
@@ -96,7 +108,11 @@ export async function ensureTotpSecret(
 export async function rotateTotpSecret(ref: DocumentReference): Promise<string> {
   const secret = generateTotpSecret();
   await ref.set(
-    { totpSecret: secret, totpLastCode: "", totpLastUsedAt: 0 },
+    {
+      totpSecret: encryptTotpSecret(secret),
+      totpLastCode: "",
+      totpLastUsedAt: 0,
+    },
     { merge: true }
   );
   return secret;
@@ -186,7 +202,8 @@ export async function verifyTotpWithReplay(
   data: DocumentData,
   code: unknown
 ): Promise<boolean> {
-  const secret = typeof data?.totpSecret === "string" ? data.totpSecret : "";
+  const stored = data?.totpSecret;
+  const secret = decryptTotpSecret(stored);
   if (!secret) return false;
   if (!verifyTotpCode(secret, code)) return false;
 
@@ -197,7 +214,14 @@ export async function verifyTotpWithReplay(
   if (withinReplay) return false;
 
   await ref.set(
-    { totpLastCode: normalized, totpLastUsedAt: Date.now() },
+    {
+      // 舊版明文在成功驗證後遷移成密文
+      ...(isEncryptedTotpSecret(stored)
+        ? {}
+        : { totpSecret: encryptTotpSecret(secret) }),
+      totpLastCode: normalized,
+      totpLastUsedAt: Date.now(),
+    },
     { merge: true }
   );
   return true;
