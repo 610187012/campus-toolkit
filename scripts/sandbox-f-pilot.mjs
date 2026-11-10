@@ -216,7 +216,7 @@ class Query {
     const docs = result.rows.map((row) => ({
       id: row.id,
       data: () => row.data,
-      ref: { id: row.id },
+      ref: new DocRef(this.collection, row.id),
     }));
     return { docs, size: docs.length, empty: docs.length === 0 };
   }
@@ -238,10 +238,45 @@ class Database {
     return new Query(name);
   }
   batch() {
-    throw new Error("沙箱尚未支援 batch");
+    const ops = [];
+    return {
+      set(ref, data) {
+        ops.push({ type: "set", collection: ref.collection, id: ref.id, data });
+      },
+      update(ref, data) {
+        ops.push({ type: "update", collection: ref.collection, id: ref.id, data });
+      },
+      delete(ref) {
+        ops.push({ type: "delete", collection: ref.collection, id: ref.id });
+      },
+      async commit() {
+        if (ops.length) await rpc("db.batch", { ops });
+      },
+    };
   }
-  runTransaction() {
-    throw new Error("沙箱尚未支援 transaction");
+  async runTransaction(fn) {
+    const ops = [];
+    const tx = {
+      async get(ref) {
+        const result = await rpc("db.doc.get", {
+          collection: ref.collection,
+          id: ref.id,
+        });
+        return { exists: result.exists, id: ref.id, data: () => result.data };
+      },
+      set(ref, data) {
+        ops.push({ type: "set", collection: ref.collection, id: ref.id, data });
+      },
+      update(ref, data) {
+        ops.push({ type: "update", collection: ref.collection, id: ref.id, data });
+      },
+      delete(ref) {
+        ops.push({ type: "delete", collection: ref.collection, id: ref.id });
+      },
+    };
+    const result = await fn(tx);
+    if (ops.length) await rpc("db.batch", { ops });
+    return result;
   }
 }
 
@@ -325,6 +360,30 @@ const MAP = {
 export function rosterCollection(role) { return MAP[role] ?? \`roster-\${role}\`; }
 `;
 
+const ANNOUNCEMENTS_SHIM = `
+export async function publishFromModule(input) {
+  return globalThis.__sandboxRpc("hook.publishAnnouncement", input);
+}
+export async function getAnnouncementSettings() {
+  return { categories: [] };
+}
+`;
+
+const CALENDAR_SHIM = `
+export async function publishScheduleFromModule(input) {
+  return globalThis.__sandboxRpc("hook.publishSchedule", input);
+}
+export async function getCalendarSettings() {
+  return { categories: [] };
+}
+`;
+
+const ANNOUNCEMENT_TYPES_SHIM = `
+export function schoolWideAudience(roles) {
+  return { roles };
+}
+`;
+
 const KNOWN_SHIMS = {
   "next/server": NEXT_SERVER_SHIM,
   "@/lib/module-db": DB_SHIM,
@@ -336,6 +395,9 @@ const KNOWN_SHIMS = {
   "@/lib/list-cache": CACHE_SHIM,
   "@/lib/audit": AUDIT_SHIM,
   "@/types/roster": ROSTER_SHIM,
+  "@/lib/announcements": ANNOUNCEMENTS_SHIM,
+  "@/lib/calendar": CALENDAR_SHIM,
+  "@/types/announcements": ANNOUNCEMENT_TYPES_SHIM,
 };
 
 function generateShims() {
@@ -458,6 +520,12 @@ function createDb() {
         },
       },
     ],
+    examRegistrations: [
+      { id: "r1", data: { eventId: "e1", studentUid: "s1" } },
+      { id: "r2", data: { eventId: "e1", studentUid: "s2" } },
+      { id: "r3", data: { eventId: "e2", studentUid: "s3" } },
+    ],
+    __hooks: [],
   };
 }
 
@@ -545,6 +613,31 @@ function handleRpc(method, params, db) {
       throw new Error(`未宣告集合：${collection}`);
     }
     db[collection] = (db[collection] ?? []).filter((row) => row.id !== params.id);
+    return { ok: true };
+  }
+  if (method === "db.batch") {
+    for (const op of params?.ops ?? []) {
+      if (!ALLOWED_COLLECTIONS.has(op.collection)) {
+        throw new Error(`未宣告集合：${op.collection}`);
+      }
+      const rows = db[op.collection] ?? (db[op.collection] = []);
+      const existing = rows.find((row) => row.id === op.id);
+      if (op.type === "set") {
+        if (existing) existing.data = op.data;
+        else rows.push({ id: op.id, data: op.data });
+      } else if (op.type === "update") {
+        if (!existing) throw new Error(`文件不存在：${op.collection}/${op.id}`);
+        existing.data = { ...existing.data, ...op.data };
+      } else if (op.type === "delete") {
+        db[op.collection] = rows.filter((row) => row.id !== op.id);
+      } else {
+        throw new Error(`未知 batch 操作：${op.type}`);
+      }
+    }
+    return { ok: true };
+  }
+  if (method === "hook.publishAnnouncement" || method === "hook.publishSchedule") {
+    db.__hooks.push({ type: method, payload: params });
     return { ok: true };
   }
   throw new Error(`未知 RPC：${method}`);
@@ -682,8 +775,56 @@ try {
   assert.equal(deleteBody.events.length, 3);
   assert.ok(!deleteBody.events.some((event) => event.id === createdId));
 
+  // 批次窗口：刪除有報名資料的場次 e1，應連同 r1／r2 一起刪除
+  const batchDb = createDb();
+  const batchDeleteRun = await runSandbox(
+    "/api/admin/exam-registration?id=e1",
+    { method: "DELETE", db: batchDb }
+  );
+  assert.equal(batchDeleteRun.response.status, 200, batchDeleteRun.response.body);
+  const batchDeleteBody = JSON.parse(batchDeleteRun.response.body);
+  assert.equal(batchDeleteBody.success, true, batchDeleteRun.response.body);
+  assert.equal(batchDeleteBody.events.length, 2);
+  assert.ok(!batchDeleteBody.events.some((event) => event.id === "e1"));
+  assert.deepEqual(
+    batchDb.examRegistrations.map((row) => row.id),
+    ["r3"],
+    "e1 的報名資料應被批次刪除"
+  );
+
+  // 掛勾窗口：建立「開放報名」場次時，應透過窗口發公告與寫行事曆
+  const hookDb = createDb();
+  const hookRun = await runSandbox("/api/admin/exam-registration", {
+    method: "POST",
+    db: hookDb,
+    body: {
+      title: "掛勾測試場次",
+      examType: "mock",
+      examDate: "2026-12-02",
+      examEndDate: "2026-12-02",
+      deadline: Date.now() + 86400000,
+      target: { grades: ["1"], classes: [] },
+      subjects: [{ key: "chinese", label: "國文" }],
+      status: "open",
+      announcementSync: { enabled: true, categoryId: "exam" },
+      calendarSync: { enabled: true, categoryId: "exam" },
+    },
+  });
+  assert.equal(hookRun.response.status, 200, hookRun.response.body);
+  const hookBody = JSON.parse(hookRun.response.body);
+  assert.equal(hookBody.success, true, hookRun.response.body);
+  assert.equal(hookDb.__hooks.length, 2, JSON.stringify(hookDb.__hooks));
+  assert.deepEqual(
+    hookDb.__hooks.map((hook) => hook.type).sort(),
+    ["hook.publishAnnouncement", "hook.publishSchedule"]
+  );
+  for (const hook of hookDb.__hooks) {
+    assert.equal(hook.payload.sourceModule, "examRegistration");
+    assert.ok(hook.payload.sourceRef);
+  }
+
   process.stdout.write(
-    "[sandbox-f-pilot] F 真正的 count／列表／建立／更新／刪除已在 --permission 子程序跑通\n"
+    "[sandbox-f-pilot] F 真正的 count／列表／建立／更新／刪除（含批次）／掛勾已在 --permission 子程序跑通\n"
   );
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
