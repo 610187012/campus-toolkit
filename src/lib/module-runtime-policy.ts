@@ -12,6 +12,23 @@ const ROLE_PREFIXES: Array<{ prefix: string; role: RuntimeRole }> = [
   { prefix: "/api/staff/", role: "staff" },
 ];
 
+const PAGE_ROLE_PREFIXES: Array<{ prefix: string; role: RuntimeRole }> = [
+  { prefix: "/admin", role: "admin" },
+  { prefix: "/student", role: "student" },
+  { prefix: "/parent", role: "parent" },
+  { prefix: "/staff", role: "staff" },
+];
+
+/** 由頁面路徑前綴推導必要角色；無前綴回 null（僅要求登入） */
+export function roleFromPagePath(pathname: string): RuntimeRole | null {
+  for (const item of PAGE_ROLE_PREFIXES) {
+    if (pathname === item.prefix || pathname.startsWith(`${item.prefix}/`)) {
+      return item.role;
+    }
+  }
+  return null;
+}
+
 /** 由 API 路徑前綴推導必要角色；無前綴回 null（僅要求登入） */
 export function roleFromApiPath(pathname: string): RuntimeRole | null {
   for (const item of ROLE_PREFIXES) {

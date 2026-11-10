@@ -25,6 +25,7 @@ const mod = { exports: {} };
 new Function("require", "module", "exports", code)(requireHost, mod, mod.exports);
 const {
   roleFromApiPath,
+  roleFromPagePath,
   needsModuleGate,
   isMutatingMethod,
   runtimeRateLimit,
@@ -38,6 +39,14 @@ assert.equal(roleFromApiPath("/api/parent/exam-registration"), "parent");
 assert.equal(roleFromApiPath("/api/staff/identity-tax-inquiry"), "staff");
 assert.equal(roleFromApiPath("/api/exam-registration"), null, "無角色前綴僅要求登入");
 assert.equal(roleFromApiPath("/api/administer"), null, "不可前綴誤判");
+
+assert.equal(roleFromPagePath("/admin/exam-registration"), "admin");
+assert.equal(roleFromPagePath("/admin"), "admin");
+assert.equal(roleFromPagePath("/student/self-directed-learning"), "student");
+assert.equal(roleFromPagePath("/parent/exam-registration"), "parent");
+assert.equal(roleFromPagePath("/staff/identity-tax-inquiry"), "staff");
+assert.equal(roleFromPagePath("/recreation"), null, "無角色前綴僅要求登入");
+assert.equal(roleFromPagePath("/administrator"), null, "不可前綴誤判");
 
 assert.equal(needsModuleGate("/api/student/x"), true);
 assert.equal(needsModuleGate("/api/parent/x"), true);

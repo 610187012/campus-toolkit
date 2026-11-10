@@ -715,6 +715,42 @@ function renderApiAdapter(moduleValue, targetRel, sourcePath) {
   return lines.join("\n");
 }
 
+const PAGE_CONFIG_EXPORTS = [
+  "metadata",
+  "generateMetadata",
+  "viewport",
+  "generateViewport",
+  "dynamic",
+  "revalidate",
+  "runtime",
+  "fetchCache",
+  "preferredRegion",
+  "maxDuration",
+];
+
+/** 頁面／layout 轉接檔（P0-8）：包上 server-side session／角色／模組閘門 */
+function renderPageAdapter(moduleValue, targetRel, sourcePath, entityName) {
+  const source = fs.readFileSync(sourcePath, "utf-8");
+  const configs = PAGE_CONFIG_EXPORTS.filter((name) => exportsName(source, name));
+  const baseName = entityName.replace(/\.[^.]+$/, "");
+  const lines = [
+    `import Page from "@/modules/${moduleValue}/${targetRel}/${baseName}";`,
+    `import { withModulePage } from "@/lib/module-page-runtime";`,
+    "",
+    `export default withModulePage(${JSON.stringify(moduleValue)}, ${JSON.stringify(
+      `/${targetRel}`
+    )}, Page);`,
+  ];
+  if (configs.length > 0) {
+    lines.push(
+      "",
+      `export { ${configs.join(", ")} } from "@/modules/${moduleValue}/${targetRel}/${baseName}";`
+    );
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 function pruneEmptyDirs(startDir) {
   let dir = startDir;
   while (dir !== APP_DIR && dir.startsWith(APP_DIR)) {
@@ -775,18 +811,20 @@ function syncAdapters(manifests) {
       if (entityDir !== moduleRoot && !entityDir.startsWith(`${moduleRoot}${path.sep}`)) continue;
       if (adapterDir !== APP_DIR && !adapterDir.startsWith(`${APP_DIR}${path.sep}`)) continue;
       if (route.kind === "page") {
-        if (!findEntity(entityDir, PAGE_ENTITIES)) continue; // 尚未實作＝尚未掛載
+        const pageEntity = findEntity(entityDir, PAGE_ENTITIES);
+        if (!pageEntity) continue; // 尚未實作＝尚未掛載
         const pageRel = `${targetRel}/page.tsx`;
         writeAdapter(
           path.join(adapterDir, "page.tsx"),
-          `export { default } from "@/modules/${m.value}/${targetRel}/page";\n`
+          renderPageAdapter(m.value, targetRel, path.join(entityDir, pageEntity), pageEntity)
         );
         wanted.add(pageRel);
-        if (findEntity(entityDir, LAYOUT_ENTITIES)) {
+        const layoutEntity = findEntity(entityDir, LAYOUT_ENTITIES);
+        if (layoutEntity) {
           const layoutRel = `${targetRel}/layout.tsx`;
           writeAdapter(
             path.join(adapterDir, "layout.tsx"),
-            `export { default } from "@/modules/${m.value}/${targetRel}/layout";\n`
+            renderPageAdapter(m.value, targetRel, path.join(entityDir, layoutEntity), layoutEntity)
           );
           wanted.add(layoutRel);
         }
