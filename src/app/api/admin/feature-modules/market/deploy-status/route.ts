@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isSuperAdmin, requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { getBranchDeployStatus } from "@/lib/module-market-github";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "feature-modules",
       RATE.FEATURE_MODULES_GET.limit,

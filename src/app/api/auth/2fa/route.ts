@@ -7,7 +7,7 @@ import {
   setPendingRoleCookie,
 } from "@/lib/server-session";
 import { getClientIp, logActivity } from "@/lib/audit";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/csrf";
 import { getCurrentPeriod, isSystemEnabled } from "@/lib/settings-server";
 import { ROLE_LABELS, isAccountActive, USER_COLLECTION, UserRole } from "@/types/users";
@@ -42,7 +42,7 @@ function expired() {
 /** GET：驗證頁初始化（目前方式、遮蔽信箱、到期時間、可否重送） */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "2fa-status",
       RATE.TWO_FA_STATUS.limit,
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "2fa-verify",
       RATE.TWO_FA_VERIFY.limit,

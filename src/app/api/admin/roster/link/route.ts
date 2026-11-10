@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { isSuperAdmin, requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { logActivity, getClientIp } from "@/lib/audit";
 import { serverErrorMessage } from "@/lib/api-error";
 import { invalidateAdminListCache } from "@/lib/list-cache";
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "roster-mutate",
       RATE.ROSTER_MUTATE.limit,

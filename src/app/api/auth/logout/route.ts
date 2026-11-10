@@ -6,7 +6,7 @@ import {
 } from "@/lib/server-session";
 import { logActivity, getClientIp } from "@/lib/audit";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { serverErrorMessage } from "@/lib/api-error";
 
 export async function POST(request: NextRequest) {
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "logout",
       RATE.LOGOUT.limit,

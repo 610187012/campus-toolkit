@@ -27,6 +27,7 @@
     "module:runtime-test": "node scripts/test-module-runtime-policy.mjs",
     "security:body-limit-test": "node scripts/test-http-body-policy.mjs",
     "security:totp-crypto-test": "node scripts/test-totp-secret-crypto.mjs",
+    "security:rate-limit-test": "node scripts/test-rate-limit-shared.mjs",
     "version:bump": "node scripts/version.js"
   },
   "keywords": [

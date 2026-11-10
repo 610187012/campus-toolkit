@@ -3,11 +3,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/audit";
 import { GENERATED_RATE } from "@/lib/rate.generated";
 import { ensureReadScope } from "@/lib/read-stats";
+import {
+  checkSharedRateLimit,
+  parseSharedRateLimitConfig,
+} from "@/lib/rate-limit-shared";
 
 /**
- * 進程內 sliding-window rate limiter。
- * 注意：serverless 冷卻或多實例會重置／分割計數，屬簡易防護；
- * 若需跨實例請改用 Upstash 等外部儲存。以下至少確保：
+ * Rate limiter：進程內 sliding-window ＋ 可選的 Upstash 跨實例固定視窗。
+ *
+ * - 未設定 `UPSTASH_REDIS_REST_URL`／`UPSTASH_REDIS_REST_TOKEN` 時，只用進程內計數。
+ * - 有設定時，兩邊都會檢查；任一超限即拒絕。Upstash 失敗會退回進程內，
+ *   避免外部服務中斷造成全站不可用。
+ * - Upstash 的 key 會先 sha256，避免把 IP／信箱等識別資料原樣送到外部。
+ *
+ * 進程內版本仍確保：
  * ① IP 來源不信可偽造的 XFF 首段（見 audit.ts getClientIp）
  * ② 桶滿時逐筆淘汰最久未使用，絕不整表清空（避免登入等限流被重置）
  */
@@ -95,6 +104,33 @@ export function tooManyRequests(retryAfterSec: number): NextResponse {
   );
 }
 
+/**
+ * 檢查限流：先跑進程內，再視設定跑 Upstash。
+ * 任一來源判定超限即拒絕；Upstash 失敗時只採用進程內結果。
+ */
+export async function checkRateLimitAsync(
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<RateLimitResult> {
+  const local = checkRateLimit(key, limit, windowMs);
+  if (!local.ok) return local;
+
+  const config = parseSharedRateLimitConfig(
+    process.env.UPSTASH_REDIS_REST_URL,
+    process.env.UPSTASH_REDIS_REST_TOKEN
+  );
+  if (!config) return local;
+
+  const shared = await checkSharedRateLimit({ key, limit, windowMs, config });
+  if (shared && !shared.ok) return shared;
+  return local;
+}
+
+/**
+ * 進程內限流（同步）。保留給既有呼叫端與外部模組使用。
+ * 宿主路由應改用 `enforceRateLimitShared` 以取得跨實例保護。
+ */
 export function enforceRateLimit(
   request: NextRequest,
   bucketName: string,
@@ -113,10 +149,27 @@ export function enforceRateLimit(
   return null;
 }
 
+/** 跨實例版：先跑進程內，再視設定跑 Upstash。 */
+export async function enforceRateLimitShared(
+  request: NextRequest,
+  bucketName: string,
+  limit: number,
+  windowMs: number,
+  suffix = ""
+): Promise<NextResponse | null> {
+  ensureReadScope(request.nextUrl.pathname);
+  const result = await checkRateLimitAsync(
+    `${bucketName}:${clientKey(request, suffix)}`,
+    limit,
+    windowMs
+  );
+  if (!result.ok) return tooManyRequests(result.retryAfterSec);
+  return null;
+}
+
 /**
- * 帳號維度限流：以 role:account 為 key，不依賴 IP，
- * 即使 IP 無法取得或可偽造，仍能擋住針對單一帳號的爆破。
- * 注意：仍為進程內計數；跨實例的持久化防護見 login 路由的 Firestore failedAttempts／全域鎖定。
+ * 帳號維度限流（同步，進程內）。
+ * 保留給既有呼叫端與外部模組使用；宿主路由改用 `enforceAccountRateLimitShared`。
  */
 export function enforceAccountRateLimit(
   bucketName: string,
@@ -127,6 +180,20 @@ export function enforceAccountRateLimit(
 ): NextResponse | null {
   const key = `${bucketName}:acct:${role}:${account.toLowerCase()}`;
   const result = checkRateLimit(key, limit, windowMs);
+  if (!result.ok) return tooManyRequests(result.retryAfterSec);
+  return null;
+}
+
+/** 帳號維度限流（跨實例版）。 */
+export async function enforceAccountRateLimitShared(
+  bucketName: string,
+  role: string,
+  account: string,
+  limit: number,
+  windowMs: number
+): Promise<NextResponse | null> {
+  const key = `${bucketName}:acct:${role}:${account.toLowerCase()}`;
+  const result = await checkRateLimitAsync(key, limit, windowMs);
   if (!result.ok) return tooManyRequests(result.retryAfterSec);
   return null;
 }

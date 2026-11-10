@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
 import { requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { serverErrorMessage } from "@/lib/api-error";
@@ -38,7 +38,7 @@ type Params = { params: Promise<{ id: string }> };
 /** GET：讀取單則公告 */
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "announcements-admin",
       RATE.ANNOUNCEMENTS_ADMIN_GET.limit,
@@ -70,7 +70,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "announcements-admin",
       RATE.ANNOUNCEMENTS_ADMIN_MUTATE.limit,
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "announcements-admin",
       RATE.ANNOUNCEMENTS_ADMIN_MUTATE.limit,
@@ -207,7 +207,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "announcements-admin",
       RATE.ANNOUNCEMENTS_ADMIN_MUTATE.limit,

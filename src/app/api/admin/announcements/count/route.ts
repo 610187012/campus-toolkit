@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { serverErrorMessage } from "@/lib/api-error";
 import { countAnnouncementsByStatus } from "@/lib/announcements";
@@ -13,7 +13,7 @@ const noStore = { "Cache-Control": "no-store" };
  */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "announcements-admin",
       RATE.ANNOUNCEMENTS_ADMIN_GET.limit,

@@ -3,7 +3,7 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { verifySession } from "@/lib/dal";
 import { unauthorized } from "@/lib/server-session";
 import { getClientIp, logActivity } from "@/lib/audit";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/csrf";
 import { getTotpIssuer } from "@/lib/settings-server";
 import { invalidateAdminListCache } from "@/lib/list-cache";
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "two-factor-set",
       RATE.TWO_FACTOR_SET.limit,

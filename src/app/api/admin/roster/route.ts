@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { checkAdminAttribute, requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { logActivity, getClientIp } from "@/lib/audit";
 import { serverErrorMessage } from "@/lib/api-error";
 import { getCurrentPeriod, getCacheEpoch } from "@/lib/settings-server";
@@ -63,7 +63,7 @@ function parseRosterBody(body: Record<string, unknown>): {
 
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "roster-list",
       RATE.ROSTER_LIST.limit,
@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "roster-mutate",
       RATE.ROSTER_MUTATE.limit,
@@ -270,7 +270,7 @@ export async function PUT(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "roster-mutate",
       RATE.ROSTER_MUTATE.limit,
@@ -397,7 +397,7 @@ export async function PATCH(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "roster-mutate",
       RATE.ROSTER_MUTATE.limit,
@@ -486,7 +486,7 @@ export async function DELETE(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "roster-mutate",
       RATE.ROSTER_MUTATE.limit,

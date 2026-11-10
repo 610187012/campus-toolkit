@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth } from "@/lib/firebase-admin";
 import { createSession, setPendingRoleCookie } from "@/lib/server-session";
 import { logActivity, getClientIp } from "@/lib/audit";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/csrf";
 import { getCurrentPeriod, isGoogleOAuthEnabled, isSystemEnabled } from "@/lib/settings-server";
 import { readTwoFactorProfile, sendLoginNotification } from "@/lib/two-factor";
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(request, "google", RATE.GOOGLE.limit, RATE.GOOGLE.windowMs);
+    const limited = await enforceRateLimitShared(request, "google", RATE.GOOGLE.limit, RATE.GOOGLE.windowMs);
     if (limited) return limited;
 
     const parsed = await readJsonBody<{ idToken?: unknown }>(request);

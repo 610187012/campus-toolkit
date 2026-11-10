@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { verifySession } from "@/lib/dal";
 import { unauthorized } from "@/lib/server-session";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { normalizeAccount, normalizeEmail } from "@/lib/validation";
 import { USER_COLLECTION } from "@/types/users";
 import { serverErrorMessage } from "@/lib/api-error";
@@ -14,7 +14,7 @@ import { serverErrorMessage } from "@/lib/api-error";
  */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "account-check",
       RATE.ACCOUNT_CHECK.limit,

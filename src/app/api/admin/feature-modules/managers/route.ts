@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
 import { serverErrorMessage } from "@/lib/api-error";
 import { getCurrentPeriod } from "@/lib/settings-server";
@@ -73,7 +73,7 @@ function personOf(data: Record<string, unknown>, role: RosterRole, uid: string):
  */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "feature-modules",
       RATE.FEATURE_MODULES_GET.limit,
@@ -264,7 +264,7 @@ export async function PUT(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "feature-modules",
       RATE.FEATURE_MODULES_MUTATE.limit,
@@ -350,7 +350,7 @@ export async function DELETE(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "feature-modules",
       RATE.FEATURE_MODULES_MUTATE.limit,

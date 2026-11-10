@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { logActivity, getClientIp } from "@/lib/audit";
 import { serverErrorMessage } from "@/lib/api-error";
 import { SETTINGS_COLLECTION, SETTINGS_DOC_ID } from "@/lib/settings-server";
@@ -15,7 +15,7 @@ import { readJsonBody } from "@/lib/http-body";
 /** GET：讀取四種身分的現行啟用狀態 */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "role-settings",
       RATE.ROLE_SETTINGS_GET.limit,
@@ -43,7 +43,7 @@ export async function PATCH(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "role-settings",
       RATE.ROLE_SETTINGS_MUTATE.limit,

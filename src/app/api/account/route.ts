@@ -8,7 +8,7 @@ import {
 } from "@/lib/server-session";
 import { revokeJti } from "@/lib/revocation";
 import { getClientIp, logActivity } from "@/lib/audit";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/csrf";
 import { getTotpIssuer, isEmailChangeAllowed, getCurrentPeriod } from "@/lib/settings-server";
 import { invalidateAdminListCache } from "@/lib/list-cache";
@@ -137,7 +137,7 @@ async function getActiveRoleOptions(
 /** GET：讀取自身帳號資料（帳號、身分與安全管理頁各卡共用） */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "account-get",
       RATE.ACCOUNT_GET.limit,
@@ -188,7 +188,7 @@ export async function PUT(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "account-put",
       RATE.ACCOUNT_UPDATE.limit,

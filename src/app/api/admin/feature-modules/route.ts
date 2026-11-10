@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { requireAdminModule, requireModuleInstallAdmin, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
 import { serverErrorMessage } from "@/lib/api-error";
 import {
@@ -30,7 +30,7 @@ import { readJsonBody } from "@/lib/http-body";
 /** GET：讀取功能模組的總開關與「模組 × 身分」開關（全體管理員，頁面顯示用） */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "feature-modules",
       RATE.FEATURE_MODULES_GET.limit,
@@ -66,7 +66,7 @@ export async function PATCH(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "feature-modules",
       RATE.FEATURE_MODULES_MUTATE.limit,
@@ -181,7 +181,7 @@ export async function DELETE(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "feature-modules",
       RATE.FEATURE_MODULES_MUTATE.limit,

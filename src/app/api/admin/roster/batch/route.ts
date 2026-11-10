@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { isSuperAdmin, requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { logActivity, getClientIp } from "@/lib/audit";
 import { serverErrorMessage } from "@/lib/api-error";
 import { getCurrentPeriod, getCacheEpoch } from "@/lib/settings-server";
@@ -626,7 +626,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "roster-batch",
       RATE.ROSTER_BATCH.limit,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { logActivity, getClientIp } from "@/lib/audit";
 import { serverErrorMessage } from "@/lib/api-error";
 import { invalidateAdminListCache } from "@/lib/list-cache";
@@ -28,7 +28,7 @@ const noStore = { "Cache-Control": "no-store" };
 /** GET：讀回校務基本資料（結構性資料，不按學期） */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "school-profile",
       RATE.SCHOOL_PROFILE_GET.limit,
@@ -61,7 +61,7 @@ export async function PUT(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "school-profile",
       RATE.SCHOOL_PROFILE_MUTATE.limit,

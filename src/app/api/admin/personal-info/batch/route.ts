@@ -10,7 +10,7 @@ import {
   deleteStudentPersonalPhotoObjects,
   personalPhotoObjectPathsForRecord,
 } from "@/lib/personal-info";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { getCacheEpoch, getCurrentPeriod } from "@/lib/settings-server";
 import {
   PERSONAL_INFO_COLLECTION,
@@ -725,7 +725,7 @@ async function getTemplateResponse() {
 export async function GET(request: NextRequest) {
   try {
     if (request.nextUrl.searchParams.get("template") === "1") return await getTemplateResponse();
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "feature-modules",
       RATE.FEATURE_MODULES_GET.limit,
@@ -745,7 +745,7 @@ export async function POST(request: NextRequest) {
   try {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
-    const limited = enforceRateLimit(request, "feature-modules", RATE.FEATURE_MODULES_MUTATE.limit, RATE.FEATURE_MODULES_MUTATE.windowMs);
+    const limited = await enforceRateLimitShared(request, "feature-modules", RATE.FEATURE_MODULES_MUTATE.limit, RATE.FEATURE_MODULES_MUTATE.windowMs);
     if (limited) return limited;
     const { session, denial } = await requireRole("admin");
     if (denial) return toAuthResponse(denial);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/csrf";
 import { getClientIp, logActivity } from "@/lib/audit";
 import { requireRole, toAuthResponse } from "@/lib/dal";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { getCurrentPeriod } from "@/lib/settings-server";
 import { serverErrorMessage } from "@/lib/api-error";
 import {
@@ -22,7 +22,7 @@ const noStore = { "Cache-Control": "no-store" };
 /** 讀取目前學期學生個人資料填寫規則。 */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "feature-modules",
       RATE.FEATURE_MODULES_GET.limit,
@@ -54,7 +54,7 @@ export async function PUT(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "feature-modules",
       RATE.FEATURE_MODULES_MUTATE.limit,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/dal";
 import { unauthorized } from "@/lib/server-session";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
 import { createThemePullRequest, prepareThemeSubmission, resolveMarketGithubConfig } from "@/lib/theme-market-github";
 import { readJsonBody } from "@/lib/http-body";
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "theme-market-submit",
       RATE.THEME_MARKET_SUBMIT.limit,

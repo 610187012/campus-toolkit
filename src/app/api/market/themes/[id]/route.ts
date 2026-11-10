@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/dal";
 import { unauthorized } from "@/lib/server-session";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import {
   downloadThemeZip,
   extractThemeZip,
@@ -34,7 +34,7 @@ const contentCache = new Map<string, CacheEntry>();
 
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "market-theme-get",
       RATE.MARKET_THEME_GET.limit,

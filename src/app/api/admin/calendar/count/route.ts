@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { requireModulePermission, toAuthResponse } from "@/lib/dal";
 import { serverErrorMessage } from "@/lib/api-error";
 import { countCalendarEventsByStatus } from "@/lib/calendar";
@@ -13,7 +13,7 @@ const noStore = { "Cache-Control": "no-store" };
  */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "calendar-admin",
       RATE.CALENDAR_ADMIN_GET.limit,

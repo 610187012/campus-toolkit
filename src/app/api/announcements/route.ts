@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
 import { toAuthResponse, verifySession } from "@/lib/dal";
 import { serverErrorMessage } from "@/lib/api-error";
@@ -29,7 +29,7 @@ function entryClassCode(entry: Record<string, unknown> | null | undefined): stri
  */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "announcements-inbox",
       RATE.ANNOUNCEMENTS_INBOX.limit,
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "announcements-staff-post",
       RATE.ANNOUNCEMENTS_STAFF_POST.limit,

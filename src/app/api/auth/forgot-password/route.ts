@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/csrf";
 import {
-  enforceRateLimit,
-  enforceAccountRateLimit,
+  enforceRateLimitShared,
+  enforceAccountRateLimitShared,
   RATE,
 } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     if (originDenied) return originDenied;
 
     const ip = getClientIp(request);
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "forgot-password",
       RATE.FORGOT_PASSWORD.limit,
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
 
     // 同一信箱的節流：查詢使用者前執行，讓「存在／不存在」兩條路徑的
     // 限流行為完全一致，不因回覆快慢洩漏帳號是否存在
-    const emailLimited = enforceAccountRateLimit(
+    const emailLimited = await enforceAccountRateLimitShared(
       "forgot-password",
       "email",
       email,

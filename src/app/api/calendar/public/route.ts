@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { serverErrorMessage } from "@/lib/api-error";
 import { verifySession } from "@/lib/dal";
 import { getCalendarSettings, listPublicCalendarEventsInRange } from "@/lib/calendar";
@@ -16,7 +16,7 @@ const MAX_SPAN_MS = 320 * 86_400_000; // 區間上限約 10 個月（防濫用�
  */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "calendar-list",
       RATE.CALENDAR_LIST.limit,

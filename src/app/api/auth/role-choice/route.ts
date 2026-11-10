@@ -6,7 +6,7 @@ import {
   getPendingRolePayload,
 } from "@/lib/server-session";
 import { logActivity, getClientIp } from "@/lib/audit";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/csrf";
 import { getCurrentPeriod, isSystemEnabled } from "@/lib/settings-server";
 import { isRoleEnabled } from "@/lib/role-settings";
@@ -29,7 +29,7 @@ function expired() {
 /** GET：選擇身分頁初始化（信箱、稱謂、可選身分） */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "role-choice",
       RATE.ROLE_CHOICE.limit,
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "role-choice",
       RATE.ROLE_CHOICE.limit,

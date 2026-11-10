@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { serverErrorMessage } from "@/lib/api-error";
 import { getAppHostingUsage } from "@/lib/usage-apphosting";
 import { getFirebaseUsage } from "@/lib/usage-firebase";
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     const { denial } = await requireAdminModule("stats");
     if (denial) return toAuthResponse(denial);
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "admin-stats-usage",
       RATE.ADMIN_USAGE_GET.limit,
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     const { denial } = await requireAdminModule("stats");
     if (denial) return toAuthResponse(denial);
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "admin-stats-usage",
       RATE.ADMIN_USAGE_GET.limit,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
 import { requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { serverErrorMessage } from "@/lib/api-error";
@@ -18,7 +18,7 @@ const noStore = { "Cache-Control": "no-store" };
 /** GET：讀取公告模組設定 */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "announcements-admin",
       RATE.ANNOUNCEMENTS_ADMIN_GET.limit,
@@ -46,7 +46,7 @@ export async function PUT(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "announcements-admin",
       RATE.ANNOUNCEMENTS_ADMIN_MUTATE.limit,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { toAuthResponse, verifySession } from "@/lib/dal";
 import { serverErrorMessage } from "@/lib/api-error";
 import {
@@ -21,7 +21,7 @@ function entryClassCode(entry: Record<string, unknown> | null | undefined): stri
 /** GET：我的公告提醒（仍有效者）＋已設定 id（供收件匣按鈕狀態） */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "announcements-inbox",
       RATE.ANNOUNCEMENTS_INBOX.limit,
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "announcements-inbox",
       RATE.ANNOUNCEMENTS_INBOX.limit,

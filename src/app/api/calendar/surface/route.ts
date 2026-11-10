@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { toAuthResponse, verifySession } from "@/lib/dal";
 import { serverErrorMessage } from "@/lib/api-error";
 import { getCalendarSettings, listSurfaceCalendarEvents } from "@/lib/calendar";
@@ -24,7 +24,7 @@ function entryClassCode(entry: Record<string, unknown> | null | undefined): stri
  */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "calendar-surface",
       RATE.CALENDAR_SURFACE.limit,

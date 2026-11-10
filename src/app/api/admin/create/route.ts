@@ -3,7 +3,7 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { hashPassword } from "@/lib/auth";
 import { requireSuperAdmin, toAuthResponse } from "@/lib/dal";
 import { logActivity, getClientIp } from "@/lib/audit";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/csrf";
 import {
   normalizeEmail,
@@ -29,7 +29,7 @@ async function adminCount(): Promise<number> {
 /** 供 /setup 判斷是否仍可建立首任管理員（不揭露環境變數名稱） */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "admin-create-status",
       RATE.ADMIN_CREATE_STATUS.limit,
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "admin-create",
       RATE.ADMIN_CREATE.limit,

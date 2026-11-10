@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb, FieldValue } from "@/lib/firebase-admin";
 import { hasAdminModule, isSuperAdmin, requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { logActivity, getClientIp } from "@/lib/audit";
 import { serverErrorMessage } from "@/lib/api-error";
 import { getCurrentPeriod, getCacheEpoch } from "@/lib/settings-server";
@@ -168,7 +168,7 @@ function isValidPreferredRole(value: unknown): boolean {
 /** GET：全帳號工作表（不分頁），含每人的具備身分與登入資訊 */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "accounts-list",
       RATE.ACCOUNTS_LIST.limit,
@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "accounts-mutate",
       RATE.ACCOUNTS_MUTATE.limit,
@@ -407,7 +407,7 @@ export async function PUT(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "accounts-mutate",
       RATE.ACCOUNTS_MUTATE.limit,
@@ -537,7 +537,7 @@ export async function PATCH(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "accounts-mutate",
       RATE.ACCOUNTS_MUTATE.limit,
@@ -603,7 +603,7 @@ export async function DELETE(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "accounts-mutate",
       RATE.ACCOUNTS_MUTATE.limit,

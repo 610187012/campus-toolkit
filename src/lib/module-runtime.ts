@@ -2,7 +2,7 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit } from "@/lib/rate-limit";
+import { enforceRateLimitShared } from "@/lib/rate-limit";
 import { requireFeatureModuleEnabled } from "@/lib/module-gate";
 import { assertBodySize } from "@/lib/http-body";
 import {
@@ -34,7 +34,7 @@ export type { ModuleRuntimeContext };
  * 5. 路徑角色（`/api/admin/*`→admin、`/api/student/*`→student…）
  * 6. 非管理端（student／parent／staff）的「功能模組已啟用」閘門
  *
- * 模組自己的 `requireRole`／`assertSameOrigin`／`enforceRateLimit` 仍會執行，
+ * 模組自己的 `requireRole`／`assertSameOrigin`／`enforceRateLimitShared` 仍會執行，
  * 這裡是第二道防線；同時提供 `AsyncLocalStorage` 的模組上下文供後續功能使用。
  */
 
@@ -58,7 +58,7 @@ export function withModuleRuntime<T extends RouteHandler>(moduleValue: string, h
     const bodyTooLarge = assertBodySize(request);
     if (bodyTooLarge) return bodyTooLarge;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       `module-runtime:${moduleValue}:${pathname}`,
       runtimeRateLimit(method),

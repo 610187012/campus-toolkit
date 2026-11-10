@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { requireAdminModule, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { logActivity, getClientIp } from "@/lib/audit";
 import { serverErrorMessage } from "@/lib/api-error";
 import { SETTINGS_COLLECTION } from "@/lib/settings-server";
@@ -50,7 +50,7 @@ async function loadOrgCodes(): Promise<ReadonlySet<string>> {
 /** GET：讀回空間設定與單位選項（結構性資料，不按學期） */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "school-spaces",
       RATE.SCHOOL_SPACES_GET.limit,
@@ -90,7 +90,7 @@ export async function PUT(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "school-spaces",
       RATE.SCHOOL_SPACES_MUTATE.limit,

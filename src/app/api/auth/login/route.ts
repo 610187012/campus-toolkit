@@ -7,8 +7,8 @@ import {
 } from "@/lib/server-session";
 import { logActivity, getClientIp } from "@/lib/audit";
 import {
-  enforceRateLimit,
-  enforceAccountRateLimit,
+  enforceRateLimitShared,
+  enforceAccountRateLimitShared,
   RATE,
 } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/csrf";
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "login",
       RATE.LOGIN.limit,
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
     const input = String(account).toLowerCase().trim();
 
     // 帳號維度限流：不依賴 IP，擋針對單一帳號的爆破
-    const accountLimited = enforceAccountRateLimit(
+    const accountLimited = await enforceAccountRateLimitShared(
       "login",
       "any",
       input,

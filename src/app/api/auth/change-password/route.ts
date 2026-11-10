@@ -5,7 +5,7 @@ import { verifySession } from "@/lib/dal";
 import { createSession, getSession, unauthorized } from "@/lib/server-session";
 import { revokeJti } from "@/lib/revocation";
 import { logActivity, getClientIp } from "@/lib/audit";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/csrf";
 import { invalidateReadCache, AUTHZ_CACHE_PREFIX } from "@/lib/read-cache";
 import { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } from "@/lib/validation";
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     if (originDenied) return originDenied;
 
     const ip = getClientIp(request);
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "change-password",
       RATE.CHANGE_PASSWORD.limit,

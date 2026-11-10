@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import AdmZip from "adm-zip";
 import { requireModuleInstallAdmin, toAuthResponse } from "@/lib/dal";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
 import { commitMarketplaceModuleInstall, resolveModuleMarketGithubConfig } from "@/lib/module-market-github";
 import { resolveModuleMarketIndexUrl } from "@/lib/module-market";
@@ -353,7 +353,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "feature-modules",
       RATE.FEATURE_MODULES_MUTATE.limit,

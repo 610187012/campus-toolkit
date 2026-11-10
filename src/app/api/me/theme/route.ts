@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/dal";
 import { unauthorized } from "@/lib/server-session";
 import { assertSameOrigin } from "@/lib/csrf";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { USER_COLLECTION } from "@/types/users";
@@ -93,7 +93,7 @@ function readUserThemeFields(user: Record<string, unknown> | null | undefined): 
 /** GET：讀取本人主題偏好（themeId＋已安裝清單，Step 11 帳號同步） */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "me-theme-get",
       RATE.ME_THEME_GET.limit,
@@ -128,7 +128,7 @@ export async function PUT(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "me-theme-put",
       RATE.ME_THEME_MUTATE.limit,

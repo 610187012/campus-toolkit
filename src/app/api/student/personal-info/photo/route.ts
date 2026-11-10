@@ -3,7 +3,7 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { getClientIp, logActivity } from "@/lib/audit";
 import { inspectJpegPhoto } from "@/lib/jpeg-photo";
 import { requireRole, toAuthResponse, type VerifiedSession } from "@/lib/dal";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { getCurrentPeriod } from "@/lib/settings-server";
 import { serverErrorMessage } from "@/lib/api-error";
 import {
@@ -32,7 +32,7 @@ const privateNoStore = {
 /** 照片只透過登入後的同源 API 提供，不建立公開 Storage URL。 */
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "student-personal-photo-get",
       RATE.ACCOUNT_GET.limit,
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     const originDenied = assertSameOrigin(request);
     if (originDenied) return originDenied;
 
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "student-personal-photo-upload",
       RATE.ACCOUNT_UPDATE.limit,

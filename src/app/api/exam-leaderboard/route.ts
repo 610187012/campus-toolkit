@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { verifySession } from "@/lib/dal";
 import { unauthorized } from "@/lib/server-session";
-import { enforceRateLimit, RATE } from "@/lib/rate-limit";
+import { enforceRateLimitShared, RATE } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/csrf";
 import { ROLE_LABELS, UserRole } from "@/types/users";
 import { serverErrorMessage } from "@/lib/api-error";
@@ -36,7 +36,7 @@ function formatRecordDate(ms: number): string {
 
 export async function GET(request: NextRequest) {
   try {
-    const limited = enforceRateLimit(
+    const limited = await enforceRateLimitShared(
       request,
       "leaderboard-get",
       RATE.LEADERBOARD_GET.limit,
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
   const session = await verifySession();
   if (!session) return unauthorized();
 
-  const limited = enforceRateLimit(
+  const limited = await enforceRateLimitShared(
     request,
     "leaderboard-post",
     RATE.LEADERBOARD_POST.limit,
