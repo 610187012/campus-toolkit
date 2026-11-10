@@ -2,11 +2,16 @@ import "server-only";
 import type { Query } from "firebase-admin/firestore";
 import { scopedDb } from "@/lib/module-db";
 import { moduleSecret } from "@/lib/module-secret";
-import { publishFromModule } from "@/lib/announcements";
-import { publishScheduleFromModule } from "@/lib/calendar";
+import { publishFromModule, updateFromModule } from "@/lib/announcements";
+import { listCalendarEvents, publishScheduleFromModule } from "@/lib/calendar";
 import { logActivity } from "@/lib/audit";
-import { getCurrentPeriod, getCacheTtlSeconds } from "@/lib/settings-server";
+import { getCurrentPeriod, getCacheTtlSeconds, readSystemDoc } from "@/lib/settings-server";
 import { loadPeriodEntries } from "@/lib/roster";
+import {
+  getSchoolClassesSetting,
+  getSchoolPeriodsSetting,
+  getSchoolSpaceStructure,
+} from "@/lib/module-host-data";
 import {
   requireAdminModule,
   requireModulePermission,
@@ -117,6 +122,21 @@ export function createHostRpc(options: HostRpcOptions): SandboxRpc {
       case "settings.cacheTtl":
         return getCacheTtlSeconds();
 
+      case "settings.readSystemDoc":
+        return readSystemDoc();
+
+      case "host.schoolPeriods":
+        return getSchoolPeriodsSetting();
+
+      case "host.schoolClasses":
+        return getSchoolClassesSetting();
+
+      case "host.spaceStructure":
+        return getSchoolSpaceStructure();
+
+      case "calendar.list":
+        return listCalendarEvents(params as never);
+
       case "roster.loadPeriodEntries": {
         const period = params.period as never;
         const role = params.role as never;
@@ -131,6 +151,9 @@ export function createHostRpc(options: HostRpcOptions): SandboxRpc {
 
       case "hook.publishAnnouncement":
         return publishFromModule(params as never);
+
+      case "hook.updateAnnouncement":
+        return updateFromModule(params as never);
 
       case "hook.publishSchedule":
         return publishScheduleFromModule(params as never);

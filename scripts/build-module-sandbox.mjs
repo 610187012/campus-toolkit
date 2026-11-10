@@ -221,6 +221,9 @@ export function isActiveEntry(entry) {
   if (typeof entry.status === "string") return entry.status === "active";
   return true;
 }
+export function managedModulesOf(entry) {
+  return Array.isArray(entry?.managedModules) ? entry.managedModules : [];
+}
 export async function loadPeriodEntries(period, role) {
   const pairs = await globalThis.__sandboxRpc("roster.loadPeriodEntries", { period, role });
   return new Map(pairs);
@@ -229,14 +232,22 @@ export async function loadPeriodEntries(period, role) {
 const SETTINGS_SHIM = `
 export async function getCurrentPeriod() { return globalThis.__sandboxRpc("settings.period", {}); }
 export async function getCacheTtlSeconds() { return globalThis.__sandboxRpc("settings.cacheTtl", {}); }
+export async function readSystemDoc() { return globalThis.__sandboxRpc("settings.readSystemDoc", {}); }
+`;
+const MODULE_HOST_DATA_SHIM = `
+export async function getSchoolPeriodsSetting() { return globalThis.__sandboxRpc("host.schoolPeriods", {}); }
+export async function getSchoolClassesSetting() { return globalThis.__sandboxRpc("host.schoolClasses", {}); }
+export async function getSchoolSpaceStructure() { return globalThis.__sandboxRpc("host.spaceStructure", {}); }
 `;
 const ANNOUNCEMENTS_SHIM = `
 export async function publishFromModule(input) { return globalThis.__sandboxRpc("hook.publishAnnouncement", input); }
+export async function updateFromModule(input) { return globalThis.__sandboxRpc("hook.updateAnnouncement", input); }
 export async function getAnnouncementSettings() { return { categories: [] }; }
 `;
 const CALENDAR_SHIM = `
 export async function publishScheduleFromModule(input) { return globalThis.__sandboxRpc("hook.publishSchedule", input); }
 export async function getCalendarSettings() { return { categories: [] }; }
+export async function listCalendarEvents(input) { return globalThis.__sandboxRpc("calendar.list", input); }
 `;
 const ANNOUNCEMENT_TYPES_SHIM = `export function schoolWideAudience(roles) { return { roles }; }`;
 const MODULE_GATE_SHIM = `
@@ -263,6 +274,7 @@ const KNOWN_SHIMS = {
   "@/lib/audit": AUDIT_SHIM,
   "@/types/roster": ROSTER_SHIM,
   "@/lib/roster": ROSTER_SHIM,
+  "@/lib/module-host-data": MODULE_HOST_DATA_SHIM,
   "@/lib/settings-server": SETTINGS_SHIM,
   "@/lib/announcements": ANNOUNCEMENTS_SHIM,
   "@/lib/calendar": CALENDAR_SHIM,
