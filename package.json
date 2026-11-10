@@ -33,6 +33,7 @@
     "security:rate-limit-test": "node scripts/test-rate-limit-shared.mjs",
     "security:module-secret-test": "node scripts/test-module-secret.mjs",
     "sandbox:poc": "node scripts/sandbox-poc.mjs",
+    "sandbox:rpc-poc": "node scripts/sandbox-rpc-poc.mjs",
     "version:bump": "node scripts/version.js"
   },
   "keywords": [
