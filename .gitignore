@@ -76,8 +76,10 @@ src/lib/activity-actions.generated.ts
 # - module.lock.json：市集安裝的 lock，要 commit（P1-10 lock-only）
 # - module.lock.local.json：本機 module:link／module:install，不進 git
 # - src/modules/*/：由 lock 在 build 時 materialize，不進 git
+# - .module-sandbox/：模組 API 的沙箱編譯產物，不進 git
 module.lock.local.json
 src/modules/*/
+.module-sandbox/
 
 # IDE
 .vscode/

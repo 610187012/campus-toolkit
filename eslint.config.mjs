@@ -10,6 +10,7 @@ const eslintConfig = defineConfig([
   js.configs.recommended,
   globalIgnores([
     ".next/**",
+    ".module-sandbox/**",
     "out/**",
     "build/**",
     "node_modules/**",
