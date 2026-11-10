@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { isFeatureModuleEnabled } from "@/lib/module-gate";
 import { roleFromPagePath } from "@/lib/module-runtime-policy";
+import { runWithModuleContext } from "@/lib/module-context";
 import { ROLE_HOME } from "@/types/users";
 import ModulePageDenied from "@/components/ModulePageDenied";
 
@@ -37,7 +38,12 @@ export function withModulePage<T extends PageComponent>(
       return <ModulePageDenied message="此功能尚未啟用，請洽系統管理員。" />;
     }
 
-    return <Page {...props} />;
+    // 頁面（server component）也在模組 context 內執行：頁面若呼叫 getAdminDb()，
+    // 會自動套用 scopedDb，不再只有 API 受集合限制。
+    return runWithModuleContext(
+      { moduleValue, pathname, method: "GET" },
+      () => Page(props)
+    );
   };
   return Gated as T;
 }

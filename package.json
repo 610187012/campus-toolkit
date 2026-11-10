@@ -16,6 +16,7 @@
     "module:scan": "node scripts/materialize-modules.mjs && node scripts/build-module-registry.mjs",
     "module:materialize": "node scripts/materialize-modules.mjs",
     "module:materialize-test": "node scripts/test-materialize-modules.mjs",
+    "module:capability-test": "node scripts/test-module-capability-scan.mjs",
     "module:install": "node scripts/module-cli.mjs install",
     "module:link": "node scripts/module-cli.mjs link",
     "module:uninstall": "node scripts/module-cli.mjs uninstall",

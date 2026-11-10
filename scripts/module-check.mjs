@@ -111,6 +111,30 @@ const CLIENT_DANGER = [
   { re: /(^|[^.\w])eval\s*\(/, name: "eval()" },
   { re: /new\s+Function\s*\(/, name: "new Function()" },
 ];
+/** 伺服器檔危險模式（P1-9 第一階段：不執行任意程式碼） */
+const SERVER_DANGER = [
+  { re: /(^|[^.\w])eval\s*\(/, name: "eval()" },
+  { re: /new\s+Function\s*\(/, name: "new Function()" },
+  { re: /process\.(?:binding|exit|kill|mainModule)\b/, name: "process 危險 API" },
+];
+/** 宿主秘密環境變數：模組不得讀取（P1-9） */
+const HOST_SECRET_ENV_KEYS = [
+  "FIREBASE_SERVICE_ACCOUNT_KEY",
+  "MODULE_MARKET_GITHUB_TOKEN",
+  "THEME_MARKET_GITHUB_TOKEN",
+  "SMTP_PASS",
+  "VERCEL_TOKEN",
+  "TOTP_ENCRYPTION_KEY",
+  "UPSTASH_REDIS_REST_TOKEN",
+  "MODULE_MARKET_INSTALL_ADMINS",
+];
+/** 一次枚舉整個 process.env 也不行（即使沒有直接寫出金鑰名稱） */
+const ENV_ENUMERATION = [
+  /Object\.(?:keys|values|entries|assign)\(\s*process\.env\b/,
+  /JSON\.stringify\(\s*process\.env\b/,
+  /\.\.\.\s*process\.env\b/,
+  /for\s*\(\s*(?:const|let|var)\s+[^)]*\bin\s+process\.env\b/,
+];
 const SCRIPT_TEST_RE = /^(?:scripts|tests?)\//;
 const DYNAMIC_IMPORT_RE = /\bimport\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g;
 const DYNAMIC_IMPORT_DYNAMIC_RE = /\bimport\s*\(\s*[A-Za-z_$]/;
@@ -178,8 +202,12 @@ function checkImportSpec(spec, relFile, file, moduleDir, moduleValue, hostDeps, 
 }
 
 const errors = [];
+const warnings = [];
 function fail(msg) {
   errors.push(msg);
+}
+function warn(msg) {
+  warnings.push(msg);
 }
 
 function readJson(file) {
@@ -304,6 +332,28 @@ function main() {
       for (const { re, name } of CLIENT_DANGER) {
         if (re.test(source)) fail(`${relFile}（"use client"）使用 ${name}【§6.3-8】`);
       }
+    } else {
+      // P1-9：伺服器端也不得執行任意程式碼
+      for (const { re, name } of SERVER_DANGER) {
+        if (re.test(source)) fail(`${relFile} 使用 ${name}——模組不得執行任意程式碼【P1-9】`);
+      }
+    }
+
+    // P1-9：不得讀取宿主秘密環境變數
+    for (const key of HOST_SECRET_ENV_KEYS) {
+      const patterns = [
+        new RegExp(`process\\.env\\.${key}\\b`),
+        new RegExp(`process\\.env\\[\\s*["'\`]${key}["'\`]\\s*\\]`),
+      ];
+      if (patterns.some((re) => re.test(source))) {
+        fail(`${relFile} 讀取宿主秘密環境變數「${key}」【P1-9】`);
+      }
+    }
+    if (ENV_ENUMERATION.some((re) => re.test(source))) {
+      fail(`${relFile} 枚舉 process.env——模組不得取得宿主完整環境變數【P1-9】`);
+    }
+    if (/process\.env\.SESSION_SECRET\b/.test(source) || /process\.env\[\s*["'`]SESSION_SECRET["'`]\s*\]/.test(source)) {
+      warn(`${relFile} 讀取 SESSION_SECRET；正式沙箱會改為模組專屬密鑰，請改用 getModuleSecret【P1-9】`);
     }
 
     // 規則 1/2/9：import 檢查（靜態＋動態＋require）
@@ -375,6 +425,9 @@ function main() {
     checkRouteGuards(moduleDir, file, source, relFile, fail);
   }
 
+  if (warnings.length) {
+    for (const w of warnings) console.warn(`[module-check] 警示：${w}`);
+  }
   if (errors.length) {
     for (const e of errors) console.error(`[module-check] 錯誤：${e}`);
     console.error(`[module-check] 共 ${errors.length} 個問題，掃描未通過。`);
