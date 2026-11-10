@@ -13,7 +13,7 @@
     "lint": "eslint . && tsc --noEmit",
     "pretypecheck": "node scripts/materialize-modules.mjs && node scripts/build-module-registry.mjs",
     "typecheck": "tsc --noEmit",
-    "module:scan": "node scripts/build-module-registry.mjs",
+    "module:scan": "node scripts/materialize-modules.mjs && node scripts/build-module-registry.mjs",
     "module:materialize": "node scripts/materialize-modules.mjs",
     "module:materialize-test": "node scripts/test-materialize-modules.mjs",
     "module:install": "node scripts/module-cli.mjs install",
