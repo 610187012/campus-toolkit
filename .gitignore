@@ -72,8 +72,11 @@ src/types/modules.generated.ts
 src/lib/rate.generated.ts
 src/lib/activity-actions.generated.ts
 
-# 選用功能模組安裝產物（各校自行從市集安裝；不入主程式 repo）
-module.lock.json
+# 選用功能模組安裝產物
+# - module.lock.json：市集安裝的 lock，要 commit（P1-10 lock-only）
+# - module.lock.local.json：本機 module:link／module:install，不進 git
+# - src/modules/*/：由 lock 在 build 時 materialize，不進 git
+module.lock.local.json
 src/modules/*/
 
 # IDE

@@ -5,7 +5,7 @@
  *   npm run module:link      -- <模組 repo 路徑>  目錄連結（win32 junction／其餘 symlink；加 --copy 改複製）
  *   npm run module:uninstall -- <value>           移除資料夾或連結＋lock 該列（Firestore 資料保留）
  *
- * 安裝／連結流程：預檢 manifest → 放入 src/modules/<value> → 寫 module.lock.json →
+ * 安裝／連結流程：預檢 manifest → 放入 src/modules/<value> → 寫 module.lock.local.json →
  * 跑掃描器（同一條驗證鏈：撞名、前綴、路徑白名單、lock↔目錄一致性【E13】＋產生註冊表與轉接檔）
  * → 跑 npm run lint；任一步失敗即回復原狀（不留半套）。
  *
@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MODULES_DIR = path.join(ROOT, "src", "modules");
-const LOCK_FILE = path.join(ROOT, "module.lock.json");
+const LOCK_FILE = path.join(ROOT, "module.lock.local.json");
 const VERSION_FILE = path.join(ROOT, "src", "version.json");
 const SCANNER = path.join(ROOT, "scripts", "build-module-registry.mjs");
 const CHECKER = path.join(ROOT, "scripts", "module-check.mjs");
@@ -59,10 +59,10 @@ function readLock() {
   if (!fs.existsSync(LOCK_FILE)) return null;
   const parsed = readJson(LOCK_FILE);
   if (parsed.error || !parsed.data || !Array.isArray(parsed.data.modules)) {
-    fail(`module.lock.json 無法解析或缺 modules 陣列：${parsed.error ?? "格式不符"}`);
+    fail(`module.lock.local.json 無法解析或缺 modules 陣列：${parsed.error ?? "格式不符"}`);
   }
   if (parsed.data.modules.some((m) => !m || typeof m.value !== "string")) {
-    fail("module.lock.json 的 modules 列需含 value");
+    fail("module.lock.local.json 的 modules 列需含 value");
   }
   return parsed.data;
 }
@@ -201,7 +201,7 @@ function assertNotInstalled(value) {
   const lock = readLock();
   const hit = lock && lock.modules.find((m) => m.value === value);
   if (hit) {
-    fail(`module.lock.json 已登記「${value}」但資料夾不存在（殘 lock）——先修復或移除該列`);
+    fail(`module.lock.local.json 已登記「${value}」但資料夾不存在（殘 lock）——先修復或移除該列`);
   }
   return lock;
 }
@@ -310,7 +310,7 @@ function installOrLink(mode, sourceArg, opts) {
     }
     const kind = mode === "link" ? "連結" : "安裝";
     out(`[module-cli] ${value} ${kind}完成（sha256 ${sha256.slice(0, 12)}…）。`);
-    out("[module-cli] 下一步：npm run dev 驗證 → commit（含 module.lock.json）→ push 自動部署；");
+    out("[module-cli] 下一步：npm run dev 驗證；本機 lock（module.lock.local.json）不會進 git。");
     out("[module-cli] 啟用：/admin/modules（預設未啟用 fail-safe）。");
     if (mode === "link" && process.platform === "win32" && !opts.copy) {
       out(
@@ -341,7 +341,7 @@ function uninstall(value) {
   }
   const lock = readLock();
   const hit = lock && lock.modules.find((m) => m.value === value);
-  if (!lstat && !hit) fail(`未安裝「${value}」（src/modules 與 module.lock.json 皆無）`);
+  if (!lstat && !hit) fail(`未安裝「${value}」（src/modules 與 module.lock.local.json 皆無）`);
 
   if (lstat) {
     removeTarget(target);
@@ -350,9 +350,9 @@ function uninstall(value) {
   if (lock && hit) {
     lock.modules = lock.modules.filter((m) => m.value !== value);
     writeLock(lock);
-    out(`[module-cli] 已從 module.lock.json 移除「${value}」`);
+    out(`[module-cli] 已從 module.lock.local.json 移除「${value}」`);
   } else if (!lock) {
-    out("[module-cli] 提示：module.lock.json 未登記該值（手放資料夾已清）");
+    out("[module-cli] 提示：module.lock.local.json 未登記該值（手放資料夾已清）");
   }
 
   if (runScanner() !== 0) fail("掃描器回報剩餘問題（見上方訊息）");

@@ -1,5 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
+import builtinTrustedKeys from "@/lib/module-trust-keys.json";
 
 /**
  * 模組套件簽章的信任根（P0-6）。
@@ -28,14 +29,11 @@ export interface ModuleSignatureResult {
  * 官方 E／F／G 的簽章公鑰（takan003 官方 key）。
  * 公鑰不是秘密；內建可讓學校零設定驗證官方模組。
  * 換鑰／撤銷需隨主程式版本更新；其他作者仍走 MODULE_MARKET_TRUSTED_KEYS。
+ *
+ * 信任清單放在 `module-trust-keys.json`，build-time materializer 也讀同一份，
+ * 避免兩處硬編碼不同步。
  */
-const OFFICIAL_MODULE_PUBLIC_KEY =
-  "MCowBQYDK2VwAyEA/bIHYBb7hUie/fguMoXJ2vltikMkN+CPIyVZ5UbCwHE=";
-const BUILTIN_TRUSTED_KEYS: Record<string, string[]> = {
-  examRegistration: [OFFICIAL_MODULE_PUBLIC_KEY],
-  selfDirectedLearning: [OFFICIAL_MODULE_PUBLIC_KEY],
-  identityTaxInquiry: [OFFICIAL_MODULE_PUBLIC_KEY],
-};
+const BUILTIN_TRUSTED_KEYS: Record<string, string[]> = builtinTrustedKeys;
 
 /** 是否要求所有套件都必須有簽章（預設 false，兼容既有未簽章套件） */
 export function isModuleSignatureRequired(): boolean {

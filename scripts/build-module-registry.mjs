@@ -33,6 +33,7 @@ const VALIDATE_ONLY = process.env.MODULE_REGISTRY_VALIDATE_ONLY === "1";
 const HAND_REGISTRY = path.join(ROOT, "src", "types", "modules.ts");
 const VERSION_FILE = path.join(ROOT, "src", "version.json");
 const LOCK_FILE = path.join(ROOT, "module.lock.json");
+const LOCAL_LOCK_FILE = path.join(ROOT, "module.lock.local.json");
 const OUT_FEATURE = path.join(ROOT, "src", "types", "feature-modules.generated.ts");
 const OUT_MODULES = path.join(ROOT, "src", "types", "modules.generated.ts");
 const RATE_TABLE = path.join(ROOT, "src", "lib", "rate-limit.ts");
@@ -915,19 +916,42 @@ for (const m of manifests) {
   }
 }
 
-// 【E13】module.lock.json ↔ 目錄一致性（lock 存在時雙向檢查；測試模式略過——fixtures 不入 lock）
-if (!VALIDATE_ONLY && fs.existsSync(LOCK_FILE)) {
-  const lock = readJson(LOCK_FILE);
-  if (lock.error || !Array.isArray(lock.data?.modules)) {
-    fail("module.lock.json", `無法解析或缺少 modules 陣列：${lock.error ?? "格式不符"}`);
-  } else {
-    const locked = new Set(lock.data.modules.map((item) => item && item.value));
+// 【E13】module.lock.json（市集）＋ module.lock.local.json（本機）↔ 目錄一致性
+// （lock 存在時雙向檢查；測試模式略過——fixtures 不入 lock）
+if (!VALIDATE_ONLY) {
+  const readLockValues = (filePath) => {
+    if (!fs.existsSync(filePath)) return [];
+    const lock = readJson(filePath);
+    if (lock.error || !Array.isArray(lock.data?.modules)) {
+      fail(
+        path.basename(filePath),
+        `無法解析或缺少 modules 陣列：${lock.error ?? "格式不符"}`
+      );
+      return [];
+    }
+    return lock.data.modules.map((item) => item && item.value).filter(isString);
+  };
+
+  const marketValues = readLockValues(LOCK_FILE);
+  const localValues = readLockValues(LOCAL_LOCK_FILE);
+  if (marketValues.length > 0 || localValues.length > 0) {
+    const locked = new Set([...marketValues, ...localValues]);
     const installed = new Set(manifests.map((m) => m.value).filter(isString));
     for (const value of locked) {
-      if (!installed.has(value)) fail("module.lock.json", `已登記「${value}」但 src/modules 無此資料夾（殘 lock）`);
+      if (!installed.has(value)) {
+        fail(
+          "module.lock.json／module.lock.local.json",
+          `已登記「${value}」但 src/modules 無此資料夾（殘 lock 或尚未 materialize）`
+        );
+      }
     }
     for (const value of installed) {
-      if (!locked.has(value)) fail("src/modules", `「${value}」不在 module.lock.json（手放未登記，請走安裝/lock 流程）`);
+      if (!locked.has(value)) {
+        fail(
+          "src/modules",
+          `「${value}」不在 module.lock.json／module.lock.local.json（手放未登記，請走安裝/lock 流程）`
+        );
+      }
     }
   }
 }

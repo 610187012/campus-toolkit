@@ -25,7 +25,15 @@ const { code } = swc.transformSync(source, {
 });
 const mod = { exports: {} };
 new Function("require", "module", "exports", code)(
-  (name) => (name === "server-only" ? {} : requireHost(name)),
+  (name) => {
+    if (name === "server-only") return {};
+    if (name === "@/lib/module-trust-keys.json") {
+      return JSON.parse(
+        fs.readFileSync(path.join(ROOT, "src", "lib", "module-trust-keys.json"), "utf-8")
+      );
+    }
+    return requireHost(name);
+  },
   mod,
   mod.exports
 );

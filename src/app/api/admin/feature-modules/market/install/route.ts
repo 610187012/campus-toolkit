@@ -116,22 +116,7 @@ function resolveArchiveExtension(fileName: string): ".zip" | ".tar.gz" | null {
   return null;
 }
 
-function readLockModules(): Set<string> {
-  const lockPath = path.join(process.cwd(), "module.lock.json");
-  if (!fs.existsSync(lockPath)) return new Set();
-
-  try {
-    const lock = JSON.parse(fs.readFileSync(lockPath, "utf-8")) as { modules?: Array<{ value?: string }> };
-    const modules = Array.isArray(lock?.modules) ? lock.modules : [];
-    return new Set(
-      modules
-        .filter((item: { value?: string }) => item && typeof item.value === "string")
-        .map((item: { value?: string }) => item.value as string)
-    );
-  } catch {
-    return new Set();
-  }
-}
+import { readInstalledModuleValues } from "@/lib/module-lock";
 
 function runModuleCli(
   command: "install" | "uninstall",
@@ -643,6 +628,8 @@ export async function POST(request: NextRequest) {
         manifestVersion,
         contractVersion,
         minHostVersion,
+        signature: expectedSignature || undefined,
+        publicKey: expectedPublicKey || undefined,
       });
 
       await logActivity({
@@ -673,7 +660,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const installed = readLockModules();
+    const installed = readInstalledModuleValues();
     const updating = installed.has(effectiveModuleId);
     let backupDir = "";
     let backupModuleDir = "";

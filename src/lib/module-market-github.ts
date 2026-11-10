@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { findLockTreeMismatch, nextHostVersion } from "@/lib/module-install-verify";
+import { hashModuleTree } from "@/lib/module-tree-hash";
 
 const GITHUB_API = "https://api.github.com";
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -11,8 +12,12 @@ interface ModuleLockEntry {
   contractVersion: number;
   minHostVersion: string;
   sha256: string;
+  /** 解壓後目錄雜湊；lock-only build 用來判斷是否需要重新下載 */
+  treeSha256?: string;
   source: string;
   installedAt: string;
+  signature?: string;
+  publicKey?: string;
 }
 
 interface ModuleLockFile {
@@ -60,6 +65,8 @@ export interface CommitMarketplaceInstallInput {
   manifestVersion: string;
   contractVersion: number;
   minHostVersion: string;
+  signature?: string;
+  publicKey?: string;
 }
 
 export interface CommitMarketplaceUninstallInput {
@@ -256,19 +263,24 @@ export async function commitMarketplaceModuleInstall(
 
   const lockRecord = await readRemoteLockFile(token, repoBase, baseBranch);
   const lock = lockRecord?.lock ?? { lockVersion: 1, modules: [] };
-  /** 變更前的遠端 lock 值，用於 lock ↔ 目錄一致性檢查 */
+  /** 變更前的遠端 lock 值，僅供 legacy 檔案安裝的 lock ↔ 目錄一致性檢查 */
   const remoteLockValues = lock.modules.map((item) => item.value);
   const sourceTag = input.sourceRef;
+  const lockOnly = sourceTag.startsWith("market:");
   const existingIndex = lock.modules.findIndex((item) => item.value === input.moduleId);
   const existing = existingIndex >= 0 ? lock.modules[existingIndex] : null;
+  const treeSha256 = hashModuleTree(input.moduleDir);
   const nextEntry: ModuleLockEntry = {
     value: input.moduleId,
     version: input.manifestVersion,
     contractVersion: input.contractVersion,
     minHostVersion: input.minHostVersion,
     sha256: input.archiveSha256,
+    treeSha256,
     source: sourceTag,
     installedAt: new Date().toISOString().slice(0, 10),
+    ...(input.signature ? { signature: input.signature } : {}),
+    ...(input.publicKey ? { publicKey: input.publicKey } : {}),
   };
 
   if (
@@ -277,6 +289,7 @@ export async function commitMarketplaceModuleInstall(
     existing.contractVersion === nextEntry.contractVersion &&
     existing.minHostVersion === nextEntry.minHostVersion &&
     existing.sha256 === nextEntry.sha256 &&
+    existing.treeSha256 === nextEntry.treeSha256 &&
     existing.source === nextEntry.source
   ) {
     return { alreadyInstalled: true, updated: false, branch: baseBranch };
@@ -286,11 +299,6 @@ export async function commitMarketplaceModuleInstall(
     lock.modules[existingIndex] = nextEntry;
   } else {
     lock.modules.push(nextEntry);
-  }
-
-  const moduleFiles = readModuleFiles(input.moduleDir);
-  if (moduleFiles.length === 0) {
-    throw new Error("模組來源資料夾沒有可提交檔案");
   }
 
   const treePayload = await githubRequest(
@@ -303,34 +311,17 @@ export async function commitMarketplaceModuleInstall(
   const treePaths = treeItems
     .filter((item) => item && item.type === "blob" && typeof item.path === "string")
     .map((item) => String(item.path));
-  const mismatch = findLockTreeMismatch(remoteLockValues, treePaths);
-  if (mismatch) {
-    const detail = [
-      mismatch.missingDirs.length > 0
-        ? `lock 有登記但沒有資料夾：${mismatch.missingDirs.join("、")}`
-        : "",
-      mismatch.missingLock.length > 0
-        ? `有資料夾但 lock 沒登記：${mismatch.missingLock.join("、")}`
-        : "",
-    ]
-      .filter(Boolean)
-      .join("；");
-    throw new Error(
-      `module.lock.json 與 src/modules 目錄不一致（${detail}）——請先修正遠端 repo 後再安裝`
-    );
-  }
 
   const targetPrefix = `src/modules/${input.moduleId}/`;
-  const existingModuleFiles = treePaths
-    .filter((pathValue) => pathValue.startsWith(targetPrefix));
-
-  const incomingModulePaths = new Set(
-    moduleFiles.map((file) => `src/modules/${input.moduleId}/${file.path}`)
+  const existingModuleFiles = treePaths.filter((pathValue) =>
+    pathValue.startsWith(targetPrefix)
   );
-
   const treeEntries: Array<Record<string, unknown>> = [];
-  for (const stalePath of existingModuleFiles) {
-    if (!incomingModulePaths.has(stalePath)) {
+
+  if (lockOnly) {
+    // P1-10：市集安裝只留下 lock；同時清掉舊版 commit 進 repo 的模組檔案。
+    // 下一次 build 會由 scripts/materialize-modules.mjs 依 lock 下載並驗章。
+    for (const stalePath of existingModuleFiles) {
       treeEntries.push({
         path: stalePath,
         mode: "100644",
@@ -338,22 +329,58 @@ export async function commitMarketplaceModuleInstall(
         sha: null,
       });
     }
-  }
-
-  for (const file of moduleFiles) {
-    const blob = await githubRequest(token, `${repoBase}/git/blobs`, {
-      method: "POST",
-      body: { content: file.contentBase64, encoding: "base64" },
-    });
-    if (!blob?.sha) {
-      throw new Error(`建立 blob 失敗：${file.path}`);
+  } else {
+    const mismatch = findLockTreeMismatch(remoteLockValues, treePaths);
+    if (mismatch) {
+      const detail = [
+        mismatch.missingDirs.length > 0
+          ? `lock 有登記但沒有資料夾：${mismatch.missingDirs.join("、")}`
+          : "",
+        mismatch.missingLock.length > 0
+          ? `有資料夾但 lock 沒登記：${mismatch.missingLock.join("、")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("；");
+      throw new Error(
+        `module.lock.json 與 src/modules 目錄不一致（${detail}）——請先修正遠端 repo 後再安裝`
+      );
     }
-    treeEntries.push({
-      path: `src/modules/${input.moduleId}/${file.path}`,
-      mode: "100644",
-      type: "blob",
-      sha: blob.sha,
-    });
+
+    const moduleFiles = readModuleFiles(input.moduleDir);
+    if (moduleFiles.length === 0) {
+      throw new Error("模組來源資料夾沒有可提交檔案");
+    }
+
+    const incomingModulePaths = new Set(
+      moduleFiles.map((file) => `src/modules/${input.moduleId}/${file.path}`)
+    );
+    for (const stalePath of existingModuleFiles) {
+      if (!incomingModulePaths.has(stalePath)) {
+        treeEntries.push({
+          path: stalePath,
+          mode: "100644",
+          type: "blob",
+          sha: null,
+        });
+      }
+    }
+
+    for (const file of moduleFiles) {
+      const blob = await githubRequest(token, `${repoBase}/git/blobs`, {
+        method: "POST",
+        body: { content: file.contentBase64, encoding: "base64" },
+      });
+      if (!blob?.sha) {
+        throw new Error(`建立 blob 失敗：${file.path}`);
+      }
+      treeEntries.push({
+        path: `src/modules/${input.moduleId}/${file.path}`,
+        mode: "100644",
+        type: "blob",
+        sha: blob.sha,
+      });
+    }
   }
 
   const lockBlob = await githubRequest(token, `${repoBase}/git/blobs`, {
@@ -369,8 +396,10 @@ export async function commitMarketplaceModuleInstall(
     type: "blob",
     sha: lockBlob.sha,
   });
-  // P0-5：安裝會修改主程式 repo，commit 內一併更新版本號
-  treeEntries.push(await createVersionTreeEntry(token, repoBase, baseBranch));
+  if (!lockOnly) {
+    // legacy 檔案安裝才需要版本足跡；lock-only 不碰版本號，避免同步衝突
+    treeEntries.push(await createVersionTreeEntry(token, repoBase, baseBranch));
+  }
 
   const tree = await githubRequest(token, `${repoBase}/git/trees`, {
     method: "POST",
@@ -484,9 +513,6 @@ export async function commitMarketplaceModuleUninstall(
       sha: lockBlob.sha,
     });
   }
-  // P0-5：卸載同樣會修改主程式 repo，commit 內一併更新版本號
-  treeEntries.push(await createVersionTreeEntry(token, repoBase, baseBranch));
-
   const tree = await githubRequest(token, `${repoBase}/git/trees`, {
     method: "POST",
     body: { base_tree: baseTreeSha, tree: treeEntries },

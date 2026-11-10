@@ -118,19 +118,24 @@ E、F、G 又稱「外掛」、「外掛功能」；維護時流程相同，只�
 
 ### 線上市集安裝的鐵律（必讀）
 
-線上市集安裝／更新／移除外掛時，**系統會自動 commit + push 到該部署所連結的 GitHub repo**
-（production 的持久化機制，讓模組撐過重新部署）。因此：
+線上市集安裝／更新／移除外掛時，**系統只會 commit + push `module.lock.json` 到該部署所連結的
+GitHub repo**（P1-10 lock-only）。模組檔案由 build 前 `scripts/materialize-modules.mjs`
+依 lock 下載、驗 sha256／簽章後重建到 `src/modules/<value>`。因此：
 
-- **只有連著「各校自己的 fork」的線上站，才可以用線上市集安裝**——裝出來的 commit
-  進自己的 fork，正是設計意圖。
-- **絕不可對連著上游（takan003/campus-toolkit）的線上站按市集安裝**——模組會被
-  commit 進上游，所有 fork 都會被迫附帶（違反「上游＝乾淨模板」的架構）。
-- 本機開發一律用 `module:link`（產物已 gitignore，不會進 git），與線上安裝互不相干。
-- 誤裝進上游時的補救：`git revert <該 commit>` 後 push 即可，**不需要重建任何 fork 或部署**；
-  各校 fork 自行安裝的模組不受影響（同步後 git 會保留他們自己的安裝）。
-- production 自動安裝／卸載的 commit 會一併更新 `src/version.json`，commit 前檢查
-  lock ↔ 目錄一致性；全量 `npm run lint`（eslint＋tsc）由 CI 執行，部署平台應等待
-  required status checks。
+- **只有連著「各校自己的 fork」的線上站，才可以用線上市集安裝**——lock commit 進自己的
+  fork，正是設計意圖。
+- **絕不可對連著上游（takan003/campus-toolkit）的線上站按市集安裝**——lock 會被 commit
+  進上游，所有 fork 都會被迫附帶該模組（違反「上游＝乾淨模板」）。
+- 本機開發一律用 `module:link`；本機 lock 寫在 `module.lock.local.json`（已 gitignore），
+  與線上安裝互不相干。
+- 誤裝進上游時的補救：`git revert <該 commit>` 後 push 即可，**不需要重建任何 fork**。
+- `module.lock.json` 要 commit；`module.lock.local.json` 與 `src/modules/*/` 不 commit。
+- 舊版把模組檔案 commit 進 repo 的 fork，第一次 lock-only 更新會自動刪除該模組的舊檔案；
+  其他模組可依 `docs/模組市集與外掛開發.md` 的遷移步驟清理。
+- 上傳 zip／本機 `sourcePath` 的安裝沒有穩定下載 URL，仍走 legacy 檔案 commit，可能仍會
+  產生同步衝突；正式安裝請用市集的 `downloadUrl`。
+- build／lint／dev 前都會先 materialize；下載、sha256 或簽章驗證失敗會直接讓流程失敗
+  （fail-closed），不會帶著不完整模組繼續建置。
 
 ### 模組信任模型與上架政策（B+）
 
@@ -138,7 +143,7 @@ E、F、G 又稱「外掛」、「外掛功能」；維護時流程相同，只�
 1. **模組作者自己的 repo** 的 PR／審核由作者自行管理，不屬於本專案治理；正式上架走 C，或把模組放進自己 fork 的 `src/modules`。
 1. **E／F／G** 是官方範例模組，由信任團隊維護；仍須走 A／B 的 `module:check`、lint、版本與 changelog 流程。
 1. 第三方模組採**「開放投稿、審核上架」**：任何人都可以在自己的 repo 撰寫，但投稿到 C 後必須通過最低限度安全審核，才可標為「已審核社群」。C 採 PR 審核制：外部 PR 只能送 `experimental`，維護者審核後才改 `reviewed`／`official`。
-1. **兩層信任**：`module.lock.json.source` 以 `market:` 開頭者屬市集模組，受上述審核與安裝檢查約束；`link-copy:`／`copy:`／其他 local 來源屬 fork 主人自用模組，**不受市集規範**，主人自行承擔。手動把資料夾放進 `src/modules` 也屬於 local。
+1. **兩層信任**：`module.lock.json`（市集）的 `source` 以 `market:` 開頭者屬市集模組，受上述審核與安裝檢查約束；`module.lock.local.json`（本機）的 `link-copy:`／`copy:`／其他 local 來源屬 fork 主人自用模組，**不受市集規範**，主人自行承擔。手動把資料夾放進 `src/modules` 也屬於 local。
 1. 市集狀態固定三種：
    - **官方**：信任團隊維護，可直接使用。
    - **已審核社群**：外部作者，通過掃描＋人審＋簽章綁定，學校可安裝。
