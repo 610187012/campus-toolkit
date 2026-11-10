@@ -86,7 +86,9 @@ export function getClientIp(request: {
   }
 
   const trustProxy =
-    process.env.VERCEL === "1" || process.env.TRUST_PROXY === "true";
+    process.env.VERCEL === "1" ||
+    Boolean(process.env.K_SERVICE) ||
+    process.env.TRUST_PROXY === "true";
   if (!trustProxy) return "";
 
   const real = request.headers.get("x-real-ip");

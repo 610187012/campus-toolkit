@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // 預設拒絕所有客戶端讀寫；證件照等檔案一律由伺服器（Admin SDK）處理。
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
