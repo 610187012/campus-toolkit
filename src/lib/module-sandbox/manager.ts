@@ -23,6 +23,23 @@ const SANDBOX_ROOT = path.join(process.cwd(), ".module-sandbox");
 const XLSX_PATH = path.join(process.cwd(), "node_modules", "xlsx", "xlsx.mjs");
 const PASSTHROUGH_READS = [path.join(process.cwd(), "node_modules", "jose")];
 const DEFAULT_TIMEOUT_MS = 15_000;
+const MAX_CONCURRENT_PER_MODULE = 4;
+const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
+const inFlight = new Map<string, number>();
+
+/** 只有清單內的模組會拿到對應環境變數；避免把 A 模組的秘密傳給 B 模組。 */
+const MODULE_ENV: Record<string, readonly string[]> = {
+  selfDirectedLearning: ["CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI"],
+};
+
+function moduleEnv(moduleValue: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const key of MODULE_ENV[moduleValue] ?? []) {
+    const value = process.env[key];
+    if (value) env[key] = value;
+  }
+  return env;
+}
 
 const RUNNER_SOURCE = `
 const pending = new Map();
@@ -94,7 +111,22 @@ process.on("message", async (message) => {
       headers: new Headers(message.headers ?? {}),
       json: async () => (message.body ? JSON.parse(message.body) : {}),
       text: async () => message.body ?? "",
-      formData: async () => new FormData(),
+      formData: async () => {
+        const form = new FormData();
+        for (const part of message.form ?? []) {
+          if (part.filename === undefined) {
+            form.append(part.name, part.value ?? "");
+          } else {
+            const bytes = Uint8Array.from(Buffer.from(part.data ?? "", "base64"));
+            form.append(
+              part.name,
+              new Blob([bytes], { type: part.type || "application/octet-stream" }),
+              part.filename
+            );
+          }
+        }
+        return form;
+      },
       cookies: {
         get: (name) => (cookieMap.has(name) ? { name, value: cookieMap.get(name) } : undefined),
         has: (name) => cookieMap.has(name),
@@ -137,10 +169,20 @@ function ensureRunnerFile(): string {
   return file;
 }
 
+export interface SandboxFormPart {
+  name: string;
+  value?: string;
+  filename?: string;
+  type?: string;
+  /** 檔案內容 base64 */
+  data?: string;
+}
+
 export interface SandboxRequest {
   url: string;
   headers: Record<string, string>;
   body?: string;
+  form?: SandboxFormPart[];
 }
 
 export interface SandboxResponse {
@@ -199,6 +241,17 @@ export async function runSandboxedRequest(options: {
   const routeFile = path.join(bundleDir, route.file);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
+  const running = inFlight.get(options.moduleValue) ?? 0;
+  if (running >= MAX_CONCURRENT_PER_MODULE) {
+    throw new Error("模組沙箱同時請求過多，請稍後再試");
+  }
+  inFlight.set(options.moduleValue, running + 1);
+  const release = () => {
+    const next = (inFlight.get(options.moduleValue) ?? 1) - 1;
+    if (next <= 0) inFlight.delete(options.moduleValue);
+    else inFlight.set(options.moduleValue, next);
+  };
+
   return new Promise<SandboxResponse>((resolve, reject) => {
     const args = [
       "--permission",
@@ -214,9 +267,7 @@ export async function runSandboxedRequest(options: {
     const child = spawn(process.execPath, args, {
       cwd: process.cwd(),
       env: {
-        ...Object.fromEntries(
-          Object.entries(process.env).filter(([key]) => key.startsWith("CANVA_"))
-        ),
+        ...moduleEnv(options.moduleValue),
         PATH: process.env.PATH ?? "",
         NODE_ENV: process.env.NODE_ENV ?? "production",
         MODULE_SANDBOX_ROUTE: routeFile,
@@ -255,6 +306,7 @@ export async function runSandboxedRequest(options: {
           url: options.request.url,
           headers: options.request.headers,
           body: options.request.body,
+          form: options.request.form,
         });
         return;
       }
@@ -283,16 +335,21 @@ export async function runSandboxedRequest(options: {
           return;
         }
         const response = data.response as SandboxResponse;
+        const responseBody = typeof response?.body === "string" ? response.body : "";
+        if (responseBody.length > MAX_RESPONSE_BYTES) {
+          reject(new Error("模組沙箱回應過大，已中止"));
+          return;
+        }
         resolve({
           status: Number(response?.status ?? 200),
           headers: response?.headers ?? {},
-          body: typeof response?.body === "string" ? response.body : "",
+          body: responseBody,
           binary: response?.binary === true,
           cookies: Array.isArray(response?.cookies) ? response.cookies : [],
         });
       }
     });
-  });
+  }).finally(release);
 }
 
 type RouteHandler = (request: NextRequest, context?: unknown) => Promise<Response> | Response;
@@ -309,10 +366,6 @@ export function withModuleSandbox<T extends RouteHandler>(
     if (!isSandboxEnabled(moduleValue)) return original(request, context);
 
     const contentType = request.headers.get("content-type") ?? "";
-    if (contentType.includes("multipart/form-data")) {
-      // 檔案上傳尚未接到沙箱窗口，先回退原流程。
-      return original(request, context);
-    }
 
     try {
       const session = await verifySession();
@@ -323,8 +376,28 @@ export function withModuleSandbox<T extends RouteHandler>(
         );
       }
       const method = request.method.toUpperCase();
-      const body =
-        method === "GET" || method === "HEAD" ? undefined : await request.text();
+      let body: string | undefined;
+      let form: SandboxFormPart[] | undefined;
+      if (method !== "GET" && method !== "HEAD") {
+        if (contentType.includes("multipart/form-data")) {
+          const parsed = await request.formData();
+          form = [];
+          for (const [name, value] of parsed.entries()) {
+            if (typeof value === "string") {
+              form.push({ name, value });
+            } else {
+              form.push({
+                name,
+                filename: value.name,
+                type: value.type,
+                data: Buffer.from(await value.arrayBuffer()).toString("base64"),
+              });
+            }
+          }
+        } else {
+          body = await request.text();
+        }
+      }
       const result = await runSandboxedRequest({
         moduleValue,
         routePath,
@@ -333,6 +406,7 @@ export function withModuleSandbox<T extends RouteHandler>(
           url: `${request.nextUrl.pathname}${request.nextUrl.search}`,
           headers: Object.fromEntries(request.headers.entries()),
           body,
+          form,
         },
         rpc: createHostRpc({
           moduleValue,

@@ -31,6 +31,8 @@
     "module:sandbox-g-student-test": "node scripts/test-sandbox-g-student.mjs",
     "module:sandbox-g-admin-test": "node scripts/test-sandbox-g-admin.mjs",
     "module:sandbox-g-parent-staff-test": "node scripts/test-sandbox-g-parent-staff.mjs",
+    "module:sandbox-multipart-test": "node scripts/test-sandbox-multipart.mjs",
+    "module:sandbox-limits-test": "node scripts/test-sandbox-limits.mjs",
     "module:materialize-test": "node scripts/test-materialize-modules.mjs",
     "module:capability-test": "node scripts/test-module-capability-scan.mjs",
     "module:install": "node scripts/module-cli.mjs install",
