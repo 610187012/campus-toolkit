@@ -22,6 +22,7 @@
     "module:sandbox-network-test": "node scripts/test-sandbox-network-policy.mjs",
     "module:sandbox-fetch-test": "node scripts/test-sandbox-fetch.mjs",
     "module:sandbox-e-test": "node scripts/test-sandbox-e-manager.mjs",
+    "module:sandbox-e-student-test": "node scripts/test-sandbox-e-student.mjs",
     "module:materialize-test": "node scripts/test-materialize-modules.mjs",
     "module:capability-test": "node scripts/test-module-capability-scan.mjs",
     "module:install": "node scripts/module-cli.mjs install",
