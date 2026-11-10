@@ -284,6 +284,13 @@ const MODULE_GATE_SHIM = `
 export async function requireFeatureModuleEnabled() { return null; }
 export async function isFeatureModuleEnabled() { return true; }
 `;
+const FEATURE_MODULES_SHIM = `
+export async function getFeatureModuleRoles() {
+  return globalThis.__sandboxRpc("settings.featureModuleRoles", {});
+}
+export async function getVisibleFeatureModuleValues() { return []; }
+export async function isFeatureModuleVisible() { return true; }
+`;
 const PERSONAL_INFO_SHIM = `
 export const STUDENT_PERSONAL_IDENTITY_COLLECTION = "studentPersonalIdentity";
 export const PERSONAL_INFO_COLLECTION = "studentPersonalInfo";
@@ -306,6 +313,7 @@ const KNOWN_SHIMS = {
   "@/lib/roster": ROSTER_SHIM,
   "@/lib/module-host-data": MODULE_HOST_DATA_SHIM,
   "@/lib/settings-server": SETTINGS_SHIM,
+  "@/lib/feature-modules": FEATURE_MODULES_SHIM,
   "@/lib/announcements": ANNOUNCEMENTS_SHIM,
   "@/lib/calendar": CALENDAR_SHIM,
   "@/types/announcements": ANNOUNCEMENT_TYPES_SHIM,

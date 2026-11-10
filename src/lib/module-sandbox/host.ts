@@ -7,6 +7,7 @@ import { listCalendarEvents, publishScheduleFromModule } from "@/lib/calendar";
 import { logActivity } from "@/lib/audit";
 import { getCurrentPeriod, getCacheTtlSeconds, readSystemDoc } from "@/lib/settings-server";
 import { loadPeriodEntries } from "@/lib/roster";
+import { getFeatureModuleRoles } from "@/lib/feature-modules";
 import {
   getSchoolClassesSetting,
   getSchoolPeriodsSetting,
@@ -124,6 +125,9 @@ export function createHostRpc(options: HostRpcOptions): SandboxRpc {
 
       case "settings.readSystemDoc":
         return readSystemDoc();
+
+      case "settings.featureModuleRoles":
+        return getFeatureModuleRoles();
 
       case "host.schoolPeriods":
         return getSchoolPeriodsSetting();
