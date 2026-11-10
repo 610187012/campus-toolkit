@@ -1,0 +1,17 @@
+{
+  "lockVersion": 1,
+  "modules": [
+    {
+      "value": "selfDirectedLearning",
+      "version": "0.0.149",
+      "contractVersion": 1,
+      "minHostVersion": "0.632",
+      "sha256": "3b7b48218f2ac7f69d11dda46d357f988ba0231302e7a83cd11e87930fdaacde",
+      "treeSha256": "7ff8cbca0c163506316b625cb558663eca04820c40c2cca6a86c7dbc60665fb2",
+      "source": "market:https://raw.githubusercontent.com/takan003/campus-toolkit-marketplace/main/releases/selfDirectedLearning-0.0.149.zip",
+      "installedAt": "2026-11-10",
+      "signature": "XhjesLTMK7yodScrsgnvZ/9JAF0a0RbDcfXHr1FqaO1fXHgUsbgCaS9vbtxFnVTm1fMBOYOhPF9nOVjRx3tZDQ==",
+      "publicKey": "MCowBQYDK2VwAyEA/bIHYBb7hUie/fguMoXJ2vltikMkN+CPIyVZ5UbCwHE="
+    }
+  ]
+}
