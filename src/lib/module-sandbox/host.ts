@@ -14,6 +14,7 @@ import {
   requireSuperAdmin,
   type VerifiedSession,
 } from "@/lib/dal";
+import { isAllowedSandboxUrl, parseAllowedHosts } from "@/lib/module-sandbox/network-policy";
 
 /**
  * 沙箱子程序的宿主 RPC（P1-9 Phase 2C）。
@@ -133,6 +134,41 @@ export function createHostRpc(options: HostRpcOptions): SandboxRpc {
 
       case "hook.publishSchedule":
         return publishScheduleFromModule(params as never);
+
+      case "net.fetch": {
+        const url = String(params.url ?? "");
+        const allowed = parseAllowedHosts(process.env.MODULE_SANDBOX_ALLOWED_HOSTS);
+        if (!isAllowedSandboxUrl(url, allowed)) {
+          throw new Error(`沙箱網路目的地未被允許：${url}`);
+        }
+        const method = typeof params.method === "string" ? params.method : "GET";
+        const headers = asRecord(params.headers) as Record<string, string>;
+        let body: BodyInit | undefined;
+        if (typeof params.bodyBase64 === "string") {
+          body = Buffer.from(params.bodyBase64, "base64");
+        } else if (typeof params.body === "string") {
+          body = params.body;
+        }
+        const response = await fetch(url, {
+          method,
+          headers,
+          body,
+          redirect: "manual",
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (response.status >= 300 && response.status < 400) {
+          throw new Error("沙箱網路不允許重新導向");
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        if (arrayBuffer.byteLength > 2 * 1024 * 1024) {
+          throw new Error("沙箱網路回應過大");
+        }
+        return {
+          status: response.status,
+          headers: Object.fromEntries(response.headers.entries()),
+          body: Buffer.from(arrayBuffer).toString("base64"),
+        };
+      }
 
       case "db.query": {
         const query = queryFromParams(options.moduleValue, params as unknown as DbQueryParams);

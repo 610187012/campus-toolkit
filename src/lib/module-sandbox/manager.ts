@@ -36,6 +36,35 @@ function rpc(method, params) {
 
 globalThis.__sandboxRpc = rpc;
 
+globalThis.fetch = async (input, init = {}) => {
+  const url =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.href
+        : input.url;
+  const headers = init.headers
+    ? Object.fromEntries(new Headers(init.headers).entries())
+    : {};
+  let body;
+  let bodyBase64;
+  if (typeof init.body === "string") body = init.body;
+  else if (init.body instanceof URLSearchParams) body = init.body.toString();
+  else if (init.body instanceof Uint8Array) bodyBase64 = Buffer.from(init.body).toString("base64");
+  else if (init.body != null) throw new Error("沙箱 fetch 尚未支援的 body 型別");
+  const result = await rpc("net.fetch", {
+    url,
+    method: (init.method ?? "GET").toUpperCase(),
+    headers,
+    body,
+    bodyBase64,
+  });
+  return new Response(Uint8Array.from(Buffer.from(result.body, "base64")), {
+    status: result.status,
+    headers: result.headers,
+  });
+};
+
 process.on("message", (message) => {
   if (message?.type !== "rpc-result") return;
   const entry = pending.get(message.id);
