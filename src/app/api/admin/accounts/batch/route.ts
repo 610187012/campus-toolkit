@@ -64,6 +64,7 @@ import {
   validateAccountInput,
   validateRosterInput,
 } from "@/lib/roster";
+import { assertBodySize, DEFAULT_FORM_BODY_BYTES } from "@/lib/http-body";
 
 export const maxDuration = 300;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -883,6 +884,9 @@ export async function POST(request: NextRequest) {
 
     const { session, denial } = await requireAdminModule("users");
     if (denial) return toAuthResponse(denial);
+
+    const bodyTooLarge = assertBodySize(request, DEFAULT_FORM_BODY_BYTES);
+    if (bodyTooLarge) return bodyTooLarge;
 
     const formData = await request.formData().catch(() => null);
     if (!formData) {

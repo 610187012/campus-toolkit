@@ -10,6 +10,7 @@ import { invalidateReadCache, AUTHZ_CACHE_PREFIX } from "@/lib/read-cache";
 import { getRoleEnabled, invalidateRoleSettingsCache } from "@/lib/role-settings";
 import { ROLE_LABELS, isUserRole, UserRole } from "@/types/users";
 import { RoleEnabledMap, ROLE_ENABLED_FIELD } from "@/types/role-settings";
+import { readJsonBody } from "@/lib/http-body";
 
 /** GET：讀取四種身分的現行啟用狀態 */
 export async function GET(request: NextRequest) {
@@ -53,7 +54,9 @@ export async function PATCH(request: NextRequest) {
     const { session, denial } = await requireAdminModule("roster");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const role: UserRole | null = isUserRole(body.role) ? body.role : null;
     const enabled = typeof body.enabled === "boolean" ? body.enabled : null;
     if (!role || enabled === null) {

@@ -11,6 +11,7 @@ import { invalidateReadCache, AUTHZ_CACHE_PREFIX } from "@/lib/read-cache";
 import { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } from "@/lib/validation";
 import { USER_COLLECTION } from "@/types/users";
 import { serverErrorMessage } from "@/lib/api-error";
+import { readJsonBody } from "@/lib/http-body";
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,7 +28,9 @@ export async function POST(request: NextRequest) {
     if (limited) return limited;
 
     // 不要求目前密碼：自身識別完全依賴 session（同源檢查＋閒置逾時＋改密後撤銷舊 session 把關）
-    const { newPassword } = await request.json();
+    const parsed = await readJsonBody<{ newPassword?: unknown }>(request);
+    if (!parsed.ok) return parsed.response;
+    const { newPassword } = parsed.data;
 
     if (!newPassword) {
       return NextResponse.json(

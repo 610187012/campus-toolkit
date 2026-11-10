@@ -10,6 +10,7 @@ import { parseModuleMarketIndex } from "@/types/module-market";
 import { invalidateSettingsCache, SETTINGS_COLLECTION, SETTINGS_DOC_ID } from "@/lib/settings-server";
 import { MODULE_MARKET_INDEX_URL_FIELD, resolveModuleMarketIndexUrl } from "@/lib/module-market";
 import { resolveModuleMarketGithubConfig } from "@/lib/module-market-github";
+import { readJsonBody } from "@/lib/http-body";
 
 export const dynamic = "force-dynamic";
 
@@ -151,7 +152,9 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const marketUrl = typeof body.marketUrl === "string" ? body.marketUrl.trim() : "";
     if (marketUrl) {
       let parsed: URL;

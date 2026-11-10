@@ -25,6 +25,7 @@ import {
   featureModuleMeta,
 } from "@/types/feature-modules";
 import { isUserRole, ROLE_LABELS } from "@/types/users";
+import { readJsonBody } from "@/lib/http-body";
 
 /** GET：讀取功能模組的總開關與「模組 × 身分」開關（全體管理員，頁面顯示用） */
 export async function GET(request: NextRequest) {
@@ -76,7 +77,9 @@ export async function PATCH(request: NextRequest) {
     const { session, denial } = await requireAdminModule("modules");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const value = typeof body.value === "string" ? body.value : "";
     const enabled = typeof body.enabled === "boolean" ? body.enabled : null;
     const meta = value ? featureModuleMeta(value) : undefined;
@@ -189,7 +192,9 @@ export async function DELETE(request: NextRequest) {
     const { session, denial } = await requireModuleInstallAdmin();
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const value = typeof body.value === "string" ? body.value : "";
     const confirmedBackup = body.confirmedBackup === true;
     const isProduction = process.env.NODE_ENV === "production";

@@ -39,6 +39,7 @@ import {
   toRosterMember,
   validateRosterInput,
 } from "@/lib/roster";
+import { readJsonBody } from "@/lib/http-body";
 
 /** 條目上的管理員屬性字串（無／非字串＝空） */
 function attributeOf(entry: Record<string, unknown> | null | undefined): string {
@@ -176,7 +177,9 @@ export async function POST(request: NextRequest) {
     const { session, denial } = await requireAdminModule("roster");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const { role, uid, input } = parseRosterBody(body);
     if (!role) {
       return NextResponse.json({ success: false, message: "帳號身分無效" }, { status: 400 });
@@ -278,7 +281,9 @@ export async function PUT(request: NextRequest) {
     const { session, denial } = await requireAdminModule("roster");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const { role, uid, input } = parseRosterBody(body);
     if (!role || !uid) {
       return NextResponse.json({ success: false, message: "請求內容無效" }, { status: 400 });
@@ -403,7 +408,9 @@ export async function PATCH(request: NextRequest) {
     const { session, denial } = await requireAdminModule("roster");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const role = isRosterRole(body.role) ? body.role : null;
     const uid = typeof body.uid === "string" ? body.uid : "";
     const status: AccountStatus | null = isAccountStatus(body.status) ? body.status : null;
@@ -490,7 +497,9 @@ export async function DELETE(request: NextRequest) {
     const { session, denial } = await requireAdminModule("roster");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const { role, uid } = parseRosterBody(body);
     if (!role || !uid) {
       return NextResponse.json({ success: false, message: "請求內容無效" }, { status: 400 });

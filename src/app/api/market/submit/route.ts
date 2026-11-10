@@ -5,6 +5,7 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { enforceRateLimit, RATE } from "@/lib/rate-limit";
 import { getClientIp, logActivity } from "@/lib/audit";
 import { createThemePullRequest, prepareThemeSubmission, resolveMarketGithubConfig } from "@/lib/theme-market-github";
+import { readJsonBody } from "@/lib/http-body";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const input = prepareThemeSubmission(body, {
       mode: "submit",
       defaultAuthor: session.displayName || session.email,

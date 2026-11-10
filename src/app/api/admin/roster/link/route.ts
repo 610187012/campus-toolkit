@@ -10,6 +10,7 @@ import { getCacheEpoch } from "@/lib/settings-server";
 import { findAccountByKey, isSuperEntry, moveEntriesUid } from "@/lib/roster";
 import { USER_COLLECTION } from "@/types/users";
 import { rosterCollection } from "@/types/roster";
+import { readJsonBody } from "@/lib/http-body";
 
 /**
  * POST：手動銜接孤兒名冊條目（帳號已刪除、名冊條目保留）。
@@ -32,7 +33,9 @@ export async function POST(request: NextRequest) {
     const { session, denial } = await requireAdminModule("roster");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const fromUid = typeof body.uid === "string" ? body.uid : "";
     const key = typeof body.key === "string" ? body.key.trim() : "";
     if (!fromUid || !key) {

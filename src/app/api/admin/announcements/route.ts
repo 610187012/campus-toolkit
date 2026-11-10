@@ -13,6 +13,7 @@ import {
 } from "@/lib/announcements";
 import { ALL_ROLES } from "@/types/users";
 import type { AnnouncementAudience } from "@/types/announcements";
+import { readJsonBody } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -81,7 +82,9 @@ export async function POST(request: NextRequest) {
     const { session, denial } = await requireAdminModule("announcements");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     if (!body) {
       return NextResponse.json({ success: false, message: "請求內容無效" }, { status: 400 });
     }

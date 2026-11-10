@@ -13,6 +13,7 @@ import {
   updateCalendarEvent,
 } from "@/lib/calendar";
 import { parseCalendarAudience, type CalendarSchoolActivity } from "@/types/calendar";
+import { readJsonBody } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -74,7 +75,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return NextResponse.json({ success: false, message: "查無此行程" }, { status: 404 });
     }
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     // 閱讀權限：「無」＝公開（isPublic）；未帶欄位時沿用現值（與身分選項互斥）
     const isPublic = typeof body.isPublic === "boolean" ? body.isPublic : undefined;
     const effectivePublic = isPublic ?? existing.isPublic;

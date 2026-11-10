@@ -146,7 +146,7 @@ E、F、G 又稱「外掛」、「外掛功能」；維護時流程相同，只�
 1. **未審核模組不得進入 production（限市集模組）**；若未來要「不審查也能上架」，必須先做 v2 隔離執行，不能直接放寬。local 自用模組不適用此條。
 1. **安裝／卸載模組**需 `modules` 權限；屬性分級已退役，預設全體管理員皆可。高風險環境可用 `MODULE_MARKET_INSTALL_ADMINS`（逗號分隔 uid／email）限縮，未設定時不限制。
 1. **核心個資集合對模組唯讀**（名冊四表＋學生個人資料三表）；模組自有集合須在 `dataCollections` 宣告，設施集合（公告／行事曆）一律走掛勾函式。v2 以 `scopedDb` 在 runtime 執行；模組 API context 內的 `getAdminDb()` 也會自動套用 `scopedDb`（宿主內部改用 `getAdminDbRaw()`）。
-1. **模組 API 由宿主 runtime wrapper 強制**：薄轉接檔會自動包上 rate limit、CSRF、完整 session、路徑角色與非管理端 module gate；模組頁面另有 server-side session／角色／module gate。模組仍須自己寫三件套，但不再是唯一防線。
+1. **模組 API 由宿主 runtime wrapper 強制**：薄轉接檔會自動包上 body 大小上限、rate limit、CSRF、完整 session、路徑角色與非管理端 module gate；模組頁面另有 server-side session／角色／module gate。模組仍須自己寫三件套，但不再是唯一防線。
 1. 目前模組仍是 in-process、具伺服器權限；審查與簽章只降低風險，**不是沙箱**。文件與市集頁必須如實揭露。
 
 <details>

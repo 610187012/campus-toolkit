@@ -11,6 +11,7 @@ import {
   POSTAL_DISTRICT_MAX_LENGTH,
   type PostalCodeOption,
 } from "@/types/postal-codes";
+import { readJsonBody } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 const MAX_BODY_BYTES = 200_000;
@@ -55,7 +56,9 @@ export async function PUT(request: NextRequest) {
     const { session, denial } = await requireAdminModule("miscSettings");
     if (denial) return toAuthResponse(denial);
 
-    const body = await request.json().catch(() => null);
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return NextResponse.json({ success: false, message: "無效的郵遞區號設定" }, { status: 400 });
     }

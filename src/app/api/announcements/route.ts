@@ -14,6 +14,7 @@ import { isActiveEntry } from "@/lib/roster";
 import { ALL_ROLES, type UserRole } from "@/types/users";
 import type { AnnouncementAudience } from "@/types/announcements";
 import { staffAudienceAllowed } from "@/types/announcements";
+import { readJsonBody } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -104,7 +105,9 @@ export async function POST(request: NextRequest) {
       return toAuthResponse({ status: 403, message: "僅教職員與管理員可發佈公告" });
     }
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     // 閱讀權限：「無」＝公開（isPublic，不需登入可見），與身分選項互斥
     const isPublic = body.isPublic === true;
     const rawRoles = Array.isArray(body.roles) ? body.roles : [];

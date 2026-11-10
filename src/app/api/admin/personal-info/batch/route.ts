@@ -25,6 +25,7 @@ import {
 } from "@/types/personal-info";
 import { rosterCollection } from "@/types/roster";
 import type { SchoolPeriod } from "@/types/settings";
+import { assertBodySize, DEFAULT_FORM_BODY_BYTES } from "@/lib/http-body";
 
 export const maxDuration = 300;
 
@@ -748,6 +749,9 @@ export async function POST(request: NextRequest) {
     if (limited) return limited;
     const { session, denial } = await requireRole("admin");
     if (denial) return toAuthResponse(denial);
+
+    const bodyTooLarge = assertBodySize(request, DEFAULT_FORM_BODY_BYTES);
+    if (bodyTooLarge) return bodyTooLarge;
 
     const formData = await request.formData().catch(() => null);
     if (!formData) return noStoreJson({ success: false, message: "請求內容無效" }, 400);

@@ -25,6 +25,7 @@
     "module:install-chain-test": "node scripts/test-module-install-chain.mjs",
     "module:db-scope-test": "node scripts/test-module-db-scope.mjs",
     "module:runtime-test": "node scripts/test-module-runtime-policy.mjs",
+    "security:body-limit-test": "node scripts/test-http-body-policy.mjs",
     "version:bump": "node scripts/version.js"
   },
   "keywords": [

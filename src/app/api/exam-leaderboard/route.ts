@@ -7,6 +7,7 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { ROLE_LABELS, UserRole } from "@/types/users";
 import { serverErrorMessage } from "@/lib/api-error";
 import { cachedRead, invalidateReadCache } from "@/lib/read-cache";
+import { readJsonBody } from "@/lib/http-body";
 
 const COLLECTION = "examLeaderboard";
 const TOP_N = 100;
@@ -114,7 +115,9 @@ export async function POST(request: NextRequest) {
   );
   if (limited) return limited;
 
-  const body = await request.json().catch(() => null);
+  const parsed = await readJsonBody<Record<string, unknown>>(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
   const raw = body?.score;
   if (
     typeof raw !== "number" ||

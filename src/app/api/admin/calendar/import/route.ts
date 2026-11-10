@@ -28,6 +28,7 @@ import {
   type CalendarSchoolActivity,
 } from "@/types/calendar";
 import type { SchoolPeriodRow } from "@/types/school-periods";
+import { assertBodySize, DEFAULT_FORM_BODY_BYTES } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 export const maxDuration = 300;
@@ -698,6 +699,9 @@ export async function POST(request: NextRequest) {
     const { context, denial } = await requireModulePermission("calendar", "import");
     if (denial) return toAuthResponse(denial);
     const session = context.session;
+
+    const bodyTooLarge = assertBodySize(request, DEFAULT_FORM_BODY_BYTES);
+    if (bodyTooLarge) return bodyTooLarge;
 
     const formData = await request.formData().catch(() => null);
     if (!formData) {

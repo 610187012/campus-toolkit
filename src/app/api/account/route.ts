@@ -30,6 +30,7 @@ import {
 } from "@/types/users";
 import { ROLE_INFO_FIELDS, adminModuleLabels } from "@/types/roster";
 import { serverErrorMessage } from "@/lib/api-error";
+import { readJsonBody } from "@/lib/http-body";
 
 export interface AccountProfile {
   uid: string;
@@ -198,15 +199,13 @@ export async function PUT(request: NextRequest) {
     const session = await verifySession();
     if (!session) return unauthorized();
 
-    let body: { email?: unknown; account?: unknown; preferredRole?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, message: "請求內容無效" },
-        { status: 400 }
-      );
-    }
+    const parsed = await readJsonBody<{
+      email?: unknown;
+      account?: unknown;
+      preferredRole?: unknown;
+    }>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     if (
       body.email === undefined &&
       body.account === undefined &&

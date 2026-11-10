@@ -15,6 +15,7 @@ import {
 } from "@/lib/login-candidate";
 import { getRosterEntry, resolveDisplayName } from "@/lib/roster";
 import { serverErrorMessage } from "@/lib/api-error";
+import { readJsonBody } from "@/lib/http-body";
 
 const GENERIC_LOGIN_ERROR = "登入失敗，請稍後再試";
 const SYSTEM_DISABLED_MESSAGE = "系統目前暫停服務，請稍後再試";
@@ -27,7 +28,9 @@ export async function POST(request: NextRequest) {
     const limited = enforceRateLimit(request, "google", RATE.GOOGLE.limit, RATE.GOOGLE.windowMs);
     if (limited) return limited;
 
-    const { idToken } = await request.json();
+    const parsed = await readJsonBody<{ idToken?: unknown }>(request);
+    if (!parsed.ok) return parsed.response;
+    const { idToken } = parsed.data;
     const ip = getClientIp(request);
 
     if (!idToken) {

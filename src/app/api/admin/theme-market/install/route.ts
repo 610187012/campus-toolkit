@@ -9,6 +9,7 @@ import {
   findThemeManifestRoot,
   loadThemePackage,
 } from "@/lib/theme-market";
+import { readJsonBody } from "@/lib/http-body";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const themeId = typeof body.id === "string" ? body.id.trim() : "";
     const downloadUrl = typeof body.downloadUrl === "string" ? body.downloadUrl.trim() : "";
     const expectedSha256 =

@@ -20,6 +20,7 @@ import {
   preferredRoleAmong,
 } from "@/lib/login-candidate";
 import { serverErrorMessage } from "@/lib/api-error";
+import { readJsonBody } from "@/lib/http-body";
 
 /**
  * 統一回覆：不論信箱是否存在、寄信成功與否都回同一段文字，
@@ -84,15 +85,9 @@ export async function POST(request: NextRequest) {
     );
     if (limited) return limited;
 
-    let body: { email?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, message: "請求內容無效" },
-        { status: 400 }
-      );
-    }
+    const parsed = await readJsonBody<{ email?: unknown }>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
 
     const email = normalizeEmail(body.email);
     if (!email) {

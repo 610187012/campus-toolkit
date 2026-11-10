@@ -49,6 +49,7 @@ import {
   storedAdminModules,
   validateRosterInput,
 } from "@/lib/roster";
+import { assertBodySize, DEFAULT_FORM_BODY_BYTES } from "@/lib/http-body";
 
 /** 條目上的管理員屬性字串（無／非字串＝空） */
 function attributeOf(entry: Record<string, unknown> | null | undefined): string {
@@ -635,6 +636,9 @@ export async function POST(request: NextRequest) {
 
     const { session, denial } = await requireAdminModule("roster");
     if (denial) return toAuthResponse(denial);
+
+    const bodyTooLarge = assertBodySize(request, DEFAULT_FORM_BODY_BYTES);
+    if (bodyTooLarge) return bodyTooLarge;
 
     const formData = await request.formData().catch(() => null);
     if (!formData) {

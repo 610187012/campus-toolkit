@@ -31,6 +31,7 @@ import {
 } from "@/lib/login-candidate";
 import { getRosterEntry, resolveDisplayName } from "@/lib/roster";
 import { serverErrorMessage } from "@/lib/api-error";
+import { readJsonBody } from "@/lib/http-body";
 
 const LOCK_THRESHOLD = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000;
@@ -152,15 +153,11 @@ export async function POST(request: NextRequest) {
     );
     if (limited) return limited;
 
-    let body: { account?: unknown; password?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, message: "請求內容無效" },
-        { status: 400 }
-      );
-    }
+    const parsed = await readJsonBody<{ account?: unknown; password?: unknown }>(
+      request
+    );
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const { account, password } = body;
     const ip = getClientIp(request);
 

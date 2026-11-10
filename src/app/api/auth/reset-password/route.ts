@@ -23,6 +23,7 @@ import { getRosterEntry, resolveDisplayName } from "@/lib/roster";
 import { getCurrentPeriod } from "@/lib/settings-server";
 import { invalidateReadCache, AUTHZ_CACHE_PREFIX } from "@/lib/read-cache";
 import { serverErrorMessage } from "@/lib/api-error";
+import { readJsonBody } from "@/lib/http-body";
 
 function maskEmail(email: string): string {
   const at = email.indexOf("@");
@@ -135,15 +136,11 @@ export async function POST(request: NextRequest) {
     );
     if (limited) return limited;
 
-    let body: { token?: unknown; newPassword?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, message: "請求內容無效" },
-        { status: 400 }
-      );
-    }
+    const parsed = await readJsonBody<{ token?: unknown; newPassword?: unknown }>(
+      request
+    );
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
 
     if (!isStrongPassword(body.newPassword)) {
       return NextResponse.json(

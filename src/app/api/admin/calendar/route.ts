@@ -12,6 +12,7 @@ import {
   purgeDownCalendarEvents,
 } from "@/lib/calendar";
 import { calendarAccessOf, parseCalendarAudience, type CalendarSchoolActivity } from "@/types/calendar";
+import { readJsonBody } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -64,7 +65,9 @@ export async function POST(request: NextRequest) {
     if (denial) return toAuthResponse(denial);
     const session = context.session;
 
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     if (!body) {
       return NextResponse.json({ success: false, message: "請求內容無效" }, { status: 400 });
     }

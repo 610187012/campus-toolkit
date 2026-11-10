@@ -12,6 +12,7 @@ import { getClientIp, logActivity } from "@/lib/audit";
 import { commitMarketplaceModuleInstall, resolveModuleMarketGithubConfig } from "@/lib/module-market-github";
 import { resolveModuleMarketIndexUrl } from "@/lib/module-market";
 import { verifyModuleArchiveSignature } from "@/lib/module-signature";
+import { assertBodySize, readJsonBody } from "@/lib/http-body";
 
 export const dynamic = "force-dynamic";
 
@@ -376,6 +377,9 @@ export async function POST(request: NextRequest) {
     let uploadArchive: File | null = null;
 
     if (contentType.includes("multipart/form-data")) {
+      const bodyTooLarge = assertBodySize(request, 2 * 1024 * 1024);
+      if (bodyTooLarge) return bodyTooLarge;
+
       const form = await request.formData();
       const idEntry = form.get("id");
       const sourceEntry = form.get("sourcePath");
@@ -393,7 +397,9 @@ export async function POST(request: NextRequest) {
       expectedPublicKey = typeof publicKeyEntry === "string" ? publicKeyEntry.trim() : "";
       uploadArchive = archiveEntry instanceof File ? archiveEntry : null;
     } else {
-      const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+      const parsed = await readJsonBody<Record<string, unknown>>(request);
+      if (!parsed.ok) return parsed.response;
+      const body = parsed.data;
       moduleId = typeof body.id === "string" ? body.id.trim() : "";
       sourcePath = typeof body.sourcePath === "string" ? body.sourcePath.trim() : "";
       downloadUrl = typeof body.downloadUrl === "string" ? body.downloadUrl.trim() : "";

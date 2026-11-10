@@ -16,6 +16,7 @@ import {
 } from "@/lib/two-factor";
 import { TWO_FACTOR_METHODS, isTwoFactorMethod, USER_COLLECTION } from "@/types/users";
 import { serverErrorMessage } from "@/lib/api-error";
+import { readJsonBody } from "@/lib/http-body";
 
 function twoFactorInfo(secret: string, account: string, issuer: string) {
   return {
@@ -44,15 +45,11 @@ export async function POST(request: NextRequest) {
     const session = await verifySession();
     if (!session) return unauthorized();
 
-    let body: { method?: unknown; action?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, message: "請求內容無效" },
-        { status: 400 }
-      );
-    }
+    const parsed = await readJsonBody<{ method?: unknown; action?: unknown }>(
+      request
+    );
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
 
     const userRef = getAdminDb()
       .collection(USER_COLLECTION)

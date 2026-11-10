@@ -10,6 +10,7 @@ import {
   getAnnouncementSettings,
   listAdminAnnouncements,
 } from "@/lib/announcements";
+import { readJsonBody } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -47,7 +48,9 @@ export async function POST(request: NextRequest) {
     const { session, denial } = await requireAdminModule("announcements");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const action = body.action === "archive" ? "archive" : body.action === "delete" ? "delete" : null;
     const ids = parseIds(body.ids);
     if (!action || ids.length === 0) {

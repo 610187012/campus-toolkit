@@ -50,6 +50,7 @@ import {
   validateAccountInput,
   validateRosterInput,
 } from "@/lib/roster";
+import { readJsonBody } from "@/lib/http-body";
 
 /** 帳號狀態變更的守門：本人、以及「仍是有效管理員且只剩他一位」都要擋 */
 async function assertAccountStatusAllowed(
@@ -231,7 +232,9 @@ export async function POST(request: NextRequest) {
     const { session, denial } = await requireAdminModule("users");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const { input, preferredRole } = parseAccountBody(body);
     if (!isValidPreferredRole(preferredRole)) {
       return NextResponse.json({ success: false, message: "慣用身分無效" }, { status: 400 });
@@ -415,7 +418,9 @@ export async function PUT(request: NextRequest) {
     const { session, denial } = await requireAdminModule("users");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const { uid, input, preferredRole } = parseAccountBody(body);
     if (!uid) {
       return NextResponse.json({ success: false, message: "請求內容無效" }, { status: 400 });
@@ -543,7 +548,9 @@ export async function PATCH(request: NextRequest) {
     const { session, denial } = await requireAdminModule("users");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const uid = typeof body.uid === "string" ? body.uid : "";
     const status: AccountStatus | null = isAccountStatus(body.status) ? body.status : null;
     if (!uid || !status) {
@@ -607,7 +614,9 @@ export async function DELETE(request: NextRequest) {
     const { session, denial } = await requireAdminModule("users");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const uid = typeof body.uid === "string" ? body.uid : "";
     if (!uid) {
       return NextResponse.json({ success: false, message: "請求內容無效" }, { status: 400 });

@@ -10,6 +10,7 @@ import { isRoleEnabled } from "@/lib/role-settings";
 import { ROLE_LABELS, isAccountActive, USER_COLLECTION, isUserRole } from "@/types/users";
 import { getRosterEntry, isActiveEntry, resolveDisplayName } from "@/lib/roster";
 import { serverErrorMessage } from "@/lib/api-error";
+import { readJsonBody } from "@/lib/http-body";
 
 /**
  * 已登入後切換身分。
@@ -37,15 +38,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let body: { role?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, message: "請求內容無效" },
-        { status: 400 }
-      );
-    }
+    const parsed = await readJsonBody<{ role?: unknown }>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
 
     if (!isUserRole(body.role)) {
       return NextResponse.json(

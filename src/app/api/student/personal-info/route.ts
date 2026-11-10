@@ -29,6 +29,7 @@ import {
   type StudentPersonalIdentityFields,
   type StudentPersonalInfoTermFields,
 } from "@/types/personal-info";
+import { readJsonBody } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -189,7 +190,9 @@ export async function PUT(request: NextRequest) {
     const { session, denial } = await requireRole("student");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     if (!body || JSON.stringify(body).length > 10_000) {
       return NextResponse.json(
         { success: false, message: "個人資料內容無效或過大" },
@@ -262,7 +265,9 @@ export async function PATCH(request: NextRequest) {
     const { session, denial } = await requireRole("student");
     if (denial) return toAuthResponse(denial);
 
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     if (!body || JSON.stringify(body).length > 4_000) {
       return NextResponse.json(
         { success: false, message: "固定個人資料內容無效或過大" },

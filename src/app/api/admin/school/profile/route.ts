@@ -13,6 +13,7 @@ import {
   readSchoolProfile,
   validateSchoolProfile,
 } from "@/types/school-profile";
+import { readJsonBody } from "@/lib/http-body";
 
 const PROFILE_DOC = { collection: SETTINGS_COLLECTION, id: PROFILE_DOC_ID };
 const MAX_BODY = 100_000;
@@ -71,7 +72,9 @@ export async function PUT(request: NextRequest) {
     const { session, denial } = await requireAdminModule("schoolSettings");
     if (denial) return toAuthResponse(denial);
 
-    const raw = await request.json().catch(() => null);
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const raw = parsed.data;
     if (!raw || typeof raw !== "object") {
       return NextResponse.json({ success: false, message: "無效的設定內容" }, { status: 400 });
     }

@@ -7,6 +7,7 @@ import { getClientIp, logActivity } from "@/lib/audit";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { USER_COLLECTION } from "@/types/users";
 import { THEME_COLOR_KEYS } from "@/types/theme";
+import { readJsonBody } from "@/lib/http-body";
 
 export const dynamic = "force-dynamic";
 
@@ -138,7 +139,9 @@ export async function PUT(request: NextRequest) {
     const session = await verifySession();
     if (!session) return unauthorized();
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const hasThemeId = "themeId" in body;
     const hasInstalled = "installedThemes" in body;
 

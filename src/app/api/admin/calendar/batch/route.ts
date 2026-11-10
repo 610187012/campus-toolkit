@@ -10,6 +10,7 @@ import {
   getCalendarSettings,
   listAdminCalendarEvents,
 } from "@/lib/calendar";
+import { readJsonBody } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -48,7 +49,9 @@ export async function POST(request: NextRequest) {
     if (denial) return toAuthResponse(denial);
     const session = context.session;
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const action = body.action === "cancel" ? "cancel" : body.action === "delete" ? "delete" : null;
     const ids = parseIds(body.ids);
     if (!action || ids.length === 0) {

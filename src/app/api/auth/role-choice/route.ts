@@ -15,6 +15,7 @@ import { orderRoles } from "@/lib/login-candidate";
 import { getRosterEntry, isActiveEntry, resolveDisplayName } from "@/lib/roster";
 import { sendLoginNotification } from "@/lib/two-factor";
 import { serverErrorMessage } from "@/lib/api-error";
+import { readJsonBody } from "@/lib/http-body";
 
 const EXPIRED_MESSAGE = "驗證階段已過期，請重新登入";
 
@@ -75,15 +76,9 @@ export async function POST(request: NextRequest) {
     const pending = await getPendingRolePayload();
     if (!pending) return expired();
 
-    let body: { role?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, message: "請求內容無效" },
-        { status: 400 }
-      );
-    }
+    const parsed = await readJsonBody<{ role?: unknown }>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
 
     // 只能選擇中途憑證內的身分（不可自行指定任一 uid／身分）
     if (!isUserRole(body.role)) return expired();

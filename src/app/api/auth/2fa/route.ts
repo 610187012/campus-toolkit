@@ -28,6 +28,7 @@ import {
 } from "@/lib/login-candidate";
 import { getRosterEntry, resolveDisplayName } from "@/lib/roster";
 import { serverErrorMessage } from "@/lib/api-error";
+import { readJsonBody } from "@/lib/http-body";
 
 const EXPIRED_MESSAGE = "驗證階段已過期，請重新登入";
 
@@ -110,15 +111,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let body: { code?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, message: "請求內容無效" },
-        { status: 400 }
-      );
-    }
+    const parsed = await readJsonBody<{ code?: unknown }>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
 
     const attemptKey = `2fa:${pending.uid}`;
     if (!checkTwoFactorAttempt(attemptKey)) {

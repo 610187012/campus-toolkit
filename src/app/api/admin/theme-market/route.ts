@@ -7,6 +7,7 @@ import { getClientIp, logActivity } from "@/lib/audit";
 import { resolveThemeMarketIndexUrl, THEME_MARKET_INDEX_URL_FIELD } from "@/lib/theme-market";
 import { parseThemeMarketIndex } from "@/types/theme-market";
 import { invalidateSettingsCache, SETTINGS_COLLECTION, SETTINGS_DOC_ID } from "@/lib/settings-server";
+import { readJsonBody } from "@/lib/http-body";
 
 export const dynamic = "force-dynamic";
 
@@ -127,7 +128,9 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const marketUrl = typeof body.marketUrl === "string" ? body.marketUrl.trim() : "";
     if (marketUrl) {
       let parsed: URL;

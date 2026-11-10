@@ -13,6 +13,7 @@ import {
 } from "@/lib/calendar";
 import { staffAudienceAllowed, type CalendarAudience } from "@/types/calendar";
 import { ALL_ROLES, type UserRole } from "@/types/users";
+import { readJsonBody } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -119,7 +120,9 @@ export async function POST(request: NextRequest) {
       return toAuthResponse({ status: 403, message: "僅教職員與管理員可建立行程" });
     }
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const rawRoles = Array.isArray(body.roles) ? body.roles : [];
     const allowedRoles: UserRole[] =
       session.role === "admin"

@@ -8,6 +8,7 @@ import { getFirebaseUsage } from "@/lib/usage-firebase";
 import { getReadStatsSnapshot, resetReadStats } from "@/lib/read-stats";
 import type { ReadStatsDiag } from "@/lib/read-stats";
 import type { StatsResponse, UsageSection } from "@/types/usage";
+import { readJsonBody } from "@/lib/http-body";
 
 /**
  * 統計儀表板：App Hosting（Cloud Run／Cloud Build）與 Firebase（Firestore）用量，
@@ -94,7 +95,9 @@ export async function POST(request: NextRequest) {
     );
     if (limited) return limited;
 
-    const body = await request.json().catch(() => null);
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     if (!body || typeof body !== "object" || (body as { action?: unknown }).action !== "reset-read-stats") {
       return NextResponse.json({ success: false, message: "無效的操作" }, { status: 400 });
     }

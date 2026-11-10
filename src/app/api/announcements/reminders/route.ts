@@ -9,6 +9,7 @@ import {
   listMyReminders,
   toggleAnnouncementReminder,
 } from "@/lib/announcements";
+import { readJsonBody } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -86,7 +87,9 @@ export async function POST(request: NextRequest) {
     const session = await verifySession();
     if (!session) return toAuthResponse({ status: 401, message: "未登入或登入已失效" });
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const announcementId =
       typeof body.announcementId === "string" ? body.announcementId.trim() : "";
     if (!announcementId) {

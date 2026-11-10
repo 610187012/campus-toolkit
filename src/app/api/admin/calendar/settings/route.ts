@@ -18,6 +18,7 @@ import {
   calendarAccessOf,
   normalizePublicPastMonths,
 } from "@/types/calendar";
+import { readJsonBody } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -87,7 +88,9 @@ export async function PUT(request: NextRequest) {
     if (denial) return toAuthResponse(denial);
     const session = context.session;
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
 
     const categories = Array.isArray(body.categories)
       ? (body.categories as unknown[]).map((item) => {

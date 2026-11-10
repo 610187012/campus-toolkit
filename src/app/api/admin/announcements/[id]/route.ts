@@ -14,6 +14,7 @@ import {
 } from "@/lib/announcements";
 import { ALL_ROLES } from "@/types/users";
 import type { AnnouncementAudience } from "@/types/announcements";
+import { readJsonBody } from "@/lib/http-body";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -86,7 +87,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return NextResponse.json({ success: false, message: "查無此公告" }, { status: 404 });
     }
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = await readJsonBody<Record<string, unknown>>(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     // 閱讀權限：「無」＝公開（isPublic）；未帶此欄位時沿用現值判斷
     const isPublic = typeof body.isPublic === "boolean" ? body.isPublic : undefined;
     const effectivePublic = isPublic ?? existing.isPublic;
