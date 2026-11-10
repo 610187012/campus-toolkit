@@ -36,6 +36,7 @@
     "sandbox:rpc-poc": "node scripts/sandbox-rpc-poc.mjs",
     "sandbox:db-poc": "node scripts/sandbox-db-poc.mjs",
     "sandbox:compile-poc": "node scripts/sandbox-compile-poc.mjs",
+    "sandbox:f-pilot": "node scripts/sandbox-f-pilot.mjs",
     "version:bump": "node scripts/version.js"
   },
   "keywords": [
