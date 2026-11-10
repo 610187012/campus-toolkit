@@ -23,6 +23,7 @@ const swc = requireHost("next/dist/build/swc");
 
 const MODULE_ROOT = path.join(ROOT, "src", "modules", "examRegistration");
 const ENTRY = path.join(MODULE_ROOT, "api", "admin", "exam-registration", "route.ts");
+const STUDENT_ENTRY = path.join(MODULE_ROOT, "api", "exam-registration", "route.ts");
 const XLSX_PATH = path.join(ROOT, "node_modules", "xlsx", "xlsx.mjs");
 const MANIFEST = JSON.parse(
   fs.readFileSync(path.join(MODULE_ROOT, "module.json"), "utf-8").replace(/^\uFEFF/, "")
@@ -111,7 +112,7 @@ function recordHostImport(spec, parsed) {
 }
 
 const compiled = new Set();
-const queue = [ENTRY];
+const queue = [ENTRY, STUDENT_ENTRY];
 
 while (queue.length > 0) {
   const sourceFile = queue.shift();
@@ -336,20 +337,50 @@ export const RATE = new Proxy({}, { get: () => ({ limit: 9999, windowMs: 60000 }
 `;
 
 const DAL_SHIM = `
-const session = {
+const adminSession = {
   uid: "u1",
   role: "admin",
   account: "demo",
   name: "Demo Admin",
   displayName: "Demo Admin",
 };
-export async function requireModulePermission() { return { context: { session }, session, denial: null }; }
-export async function requireRole() { return { context: { session }, session, denial: null }; }
-export async function requireAdminModule() { return { context: { session }, session, denial: null }; }
-export async function requireSuperAdmin() { return { context: { session }, session, denial: null, isSuper: true }; }
+const studentSession = {
+  uid: "s1",
+  role: "student",
+  account: "s1",
+  name: "王小明",
+  displayName: "王小明",
+  __entry: {
+    grade: "1",
+    classCode: "101",
+    name: "王小明",
+    studentId: "S001",
+    seatNo: "1",
+    className: "一年一班",
+    rollNo: "10101",
+  },
+};
+export async function requireModulePermission() {
+  return { context: { session: adminSession }, session: adminSession, denial: null };
+}
+export async function requireRole(role) {
+  const session = role === "student" ? studentSession : adminSession;
+  return { context: { session }, session, denial: null };
+}
+export async function requireAdminModule() {
+  return { context: { session: adminSession }, session: adminSession, denial: null };
+}
+export async function requireSuperAdmin() {
+  return { context: { session: adminSession }, session: adminSession, denial: null, isSuper: true };
+}
 export function toAuthResponse(denial) { return denial; }
-export async function verifySession() { return session; }
+export async function verifySession() { return adminSession; }
 export function isSuperAdmin() { return true; }
+`;
+
+const MODULE_GATE_SHIM = `
+export async function requireFeatureModuleEnabled() { return null; }
+export async function isFeatureModuleEnabled() { return true; }
 `;
 
 const CSRF_SHIM = `
@@ -438,6 +469,7 @@ const KNOWN_SHIMS = {
   "@/types/announcements": ANNOUNCEMENT_TYPES_SHIM,
   "@/lib/settings-server": SETTINGS_SHIM,
   "@/lib/roster": ROSTER_LIB_SHIM,
+  "@/lib/module-gate": MODULE_GATE_SHIM,
 };
 
 function generateShims() {
@@ -494,7 +526,8 @@ process.on("message", (message) => {
   else entry.reject(new Error(message.error ?? "RPC 失敗"));
 });
 
-const { GET, POST, PATCH, DELETE } = await import(new URL("./api/admin/exam-registration/route.mjs", import.meta.url));
+const adminRoute = await import(new URL("./api/admin/exam-registration/route.mjs", import.meta.url));
+const studentRoute = await import(new URL("./api/exam-registration/route.mjs", import.meta.url));
 
 process.on("message", async (message) => {
   if (message?.type !== "request") return;
@@ -507,7 +540,8 @@ process.on("message", async (message) => {
       json: async () => message.body ?? {},
       formData: async () => new FormData(),
     };
-    const handler = { GET, POST, PATCH, DELETE }[message.method ?? "GET"];
+    const route = message.route === "student" ? studentRoute : adminRoute;
+    const handler = route[message.method ?? "GET"];
     if (!handler) throw new Error("沙箱尚未支援 method：" + message.method);
     const response = await handler(request);
     process.send({ type: "response", ok: true, response });
@@ -794,6 +828,7 @@ function runSandbox(requestPath, options = {}) {
           type: "request",
           path: requestPath,
           method: options.method ?? "GET",
+          route: options.route ?? "admin",
           body: options.body,
         });
         return;
@@ -956,8 +991,77 @@ try {
   const xlsxBuffer = Buffer.from(xlsxRun.response.body, "base64");
   assert.equal(xlsxBuffer.subarray(0, 2).toString(), "PK", "XLSX 應為 zip 格式");
 
+  // 名冊／統計分支
+  const statsRun = await runSandbox(
+    "/api/admin/exam-registration?eventId=e1&stats=1",
+    { method: "GET", db: createDb() }
+  );
+  assert.equal(statsRun.response.status, 200, statsRun.response.body);
+  const statsBody = JSON.parse(statsRun.response.body);
+  assert.equal(statsBody.success, true, statsRun.response.body);
+  assert.equal(statsBody.roster.students.length, 2);
+  assert.equal(statsBody.roster.registrations.length, 2);
+
+  const tabsRun = await runSandbox("/api/admin/exam-registration?eventId=e1", {
+    method: "GET",
+    db: createDb(),
+  });
+  assert.equal(tabsRun.response.status, 200, tabsRun.response.body);
+  const tabsBody = JSON.parse(tabsRun.response.body);
+  assert.equal(tabsBody.success, true, tabsRun.response.body);
+  const class101 = tabsBody.classTabs.find((tab) => tab.key === "101");
+  assert.equal(class101?.count, 2, tabsRun.response.body);
+
+  const classRun = await runSandbox(
+    "/api/admin/exam-registration?eventId=e1&classCode=101",
+    { method: "GET", db: createDb() }
+  );
+  assert.equal(classRun.response.status, 200, classRun.response.body);
+  const classBody = JSON.parse(classRun.response.body);
+  assert.equal(classBody.success, true, classRun.response.body);
+  assert.equal(classBody.students.length, 2);
+  assert.equal(classBody.classSummary.total, 2);
+
+  // 學生端：可見場次／登錄
+  const studentDb = createDb();
+  const studentGet = await runSandbox("/api/exam-registration", {
+    method: "GET",
+    route: "student",
+    db: studentDb,
+  });
+  assert.equal(studentGet.response.status, 200, studentGet.response.body);
+  const studentGetBody = JSON.parse(studentGet.response.body);
+  assert.equal(studentGetBody.success, true, studentGet.response.body);
+  assert.deepEqual(
+    studentGetBody.events.map((event) => event.id),
+    ["e1"],
+    studentGet.response.body
+  );
+  assert.deepEqual(studentGetBody.events[0].mySubjectKeys, []);
+
+  const studentPost = await runSandbox("/api/exam-registration", {
+    method: "POST",
+    route: "student",
+    db: studentDb,
+    body: { eventId: "e1", subjectKeys: ["chinese"], feeCode: "1" },
+  });
+  assert.equal(studentPost.response.status, 200, studentPost.response.body);
+  const studentPostBody = JSON.parse(studentPost.response.body);
+  assert.equal(studentPostBody.success, true, studentPost.response.body);
+  assert.equal(studentPostBody.message, "登錄完成");
+  assert.deepEqual(studentPostBody.registration.subjectKeys, ["chinese"]);
+
+  const studentGet2 = await runSandbox("/api/exam-registration", {
+    method: "GET",
+    route: "student",
+    db: studentDb,
+  });
+  const studentGet2Body = JSON.parse(studentGet2.response.body);
+  assert.deepEqual(studentGet2Body.events[0].mySubjectKeys, ["chinese"]);
+  assert.ok(studentGet2Body.events[0].registeredAt);
+
   process.stdout.write(
-    "[sandbox-f-pilot] F 真正的 count／列表／建立／更新／刪除（含批次）／掛勾／CSV／XLSX 已在 --permission 子程序跑通\n"
+    "[sandbox-f-pilot] F 真正的 count／列表／建立／更新／刪除（含批次）／掛勾／CSV／XLSX／名冊統計／學生登錄已在 --permission 子程序跑通\n"
   );
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
