@@ -18,6 +18,7 @@
     "module:sandbox-build": "node scripts/build-module-sandbox.mjs",
     "module:sandbox-manager-test": "node scripts/test-module-sandbox-manager.mjs",
     "module:sandbox-f-test": "node scripts/test-sandbox-f-manager.mjs",
+    "module:sandbox-wrapper-test": "node scripts/test-sandbox-f-wrapper.mjs",
     "module:materialize-test": "node scripts/test-materialize-modules.mjs",
     "module:capability-test": "node scripts/test-module-capability-scan.mjs",
     "module:install": "node scripts/module-cli.mjs install",
