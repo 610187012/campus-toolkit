@@ -214,6 +214,10 @@ class Query {
     this.limitValue = value;
     return this;
   }
+  select(...fields) {
+    this.selected = fields;
+    return this;
+  }
   doc(id) {
     const resolvedId =
       id ??
@@ -227,6 +231,7 @@ class Query {
       filters: this.filters,
       orderBy: this.order,
       limit: this.limitValue,
+      select: this.selected,
     });
     const docs = result.rows.map((row) => ({
       id: row.id,
@@ -251,6 +256,16 @@ class Query {
 class Database {
   collection(name) {
     return new Query(name);
+  }
+  async getAll(...refs) {
+    const result = await rpc("db.getAll", {
+      refs: refs.map((ref) => ({ collection: ref.collection, id: ref.id })),
+    });
+    return result.snapshots.map((snapshot) => ({
+      exists: snapshot.exists,
+      id: snapshot.id,
+      data: () => snapshot.data,
+    }));
   }
   batch() {
     const ops = [];
@@ -383,6 +398,16 @@ export async function requireFeatureModuleEnabled() { return null; }
 export async function isFeatureModuleEnabled() { return true; }
 `;
 
+const PERSONAL_INFO_SHIM = `
+export const STUDENT_PERSONAL_IDENTITY_COLLECTION = "studentPersonalIdentity";
+export const PERSONAL_INFO_COLLECTION = "studentPersonalInfo";
+export function readStudentPersonalIdentityFields(data) {
+  return {
+    nationalId: typeof data?.nationalId === "string" ? data.nationalId : "",
+  };
+}
+`;
+
 const CSRF_SHIM = `
 export function assertSameOrigin() { return null; }
 `;
@@ -470,6 +495,7 @@ const KNOWN_SHIMS = {
   "@/lib/settings-server": SETTINGS_SHIM,
   "@/lib/roster": ROSTER_LIB_SHIM,
   "@/lib/module-gate": MODULE_GATE_SHIM,
+  "@/types/personal-info": PERSONAL_INFO_SHIM,
 };
 
 function generateShims() {
@@ -578,7 +604,7 @@ function createDb() {
           basicFee: { standard: 0, reduced: 0 },
           examMode: "review",
           registrationMode: "optional",
-          studentArchiveEnabled: false,
+          studentArchiveEnabled: true,
           announcementSync: { enabled: false, categoryId: "other", body: "" },
           calendarSync: {
             enabled: false,
@@ -673,8 +699,20 @@ function createDb() {
         },
       },
     ],
+    studentPersonalIdentity: [
+      { id: "s1", data: { nationalId: "A123456789" } },
+      { id: "s2", data: { nationalId: "B223456789" } },
+    ],
     __hooks: [],
   };
+}
+
+function createStudentDb() {
+  const db = createDb();
+  db.examRegistrations = db.examRegistrations.filter(
+    (row) => row.data.studentUid !== "s1"
+  );
+  return db;
 }
 
 function applyFilters(rows, filters = []) {
@@ -762,6 +800,16 @@ function handleRpc(method, params, db) {
     }
     db[collection] = (db[collection] ?? []).filter((row) => row.id !== params.id);
     return { ok: true };
+  }
+  if (method === "db.getAll") {
+    const snapshots = (params?.refs ?? []).map(({ collection, id }) => {
+      if (!ALLOWED_COLLECTIONS.has(collection)) {
+        throw new Error(`未宣告集合：${collection}`);
+      }
+      const row = (db[collection] ?? []).find((item) => item.id === id);
+      return { exists: Boolean(row), id, data: row?.data ?? null };
+    });
+    return { snapshots };
   }
   if (method === "db.batch") {
     for (const op of params?.ops ?? []) {
@@ -991,6 +1039,18 @@ try {
   const xlsxBuffer = Buffer.from(xlsxRun.response.body, "base64");
   assert.equal(xlsxBuffer.subarray(0, 2).toString(), "PK", "XLSX 應為 zip 格式");
 
+  const officialRun = await runSandbox(
+    "/api/admin/exam-registration?eventId=e1&format=official-xlsx&schoolExamCode=TEST&registrationNumberField=rollNo",
+    { method: "GET", db: createDb() }
+  );
+  assert.equal(officialRun.response.status, 200, String(officialRun.response.body).slice(0, 120));
+  assert.equal(officialRun.response.binary, true);
+  assert.equal(
+    Buffer.from(officialRun.response.body, "base64").subarray(0, 2).toString(),
+    "PK",
+    "official XLSX 應為 zip 格式"
+  );
+
   // 名冊／統計分支
   const statsRun = await runSandbox(
     "/api/admin/exam-registration?eventId=e1&stats=1",
@@ -1023,7 +1083,7 @@ try {
   assert.equal(classBody.classSummary.total, 2);
 
   // 學生端：可見場次／登錄
-  const studentDb = createDb();
+  const studentDb = createStudentDb();
   const studentGet = await runSandbox("/api/exam-registration", {
     method: "GET",
     route: "student",
@@ -1060,8 +1120,57 @@ try {
   assert.deepEqual(studentGet2Body.events[0].mySubjectKeys, ["chinese"]);
   assert.ok(studentGet2Body.events[0].registeredAt);
 
+  const archiveRun = await runSandbox("/api/exam-registration", {
+    method: "PATCH",
+    route: "student",
+    db: studentDb,
+    body: { eventId: "e1" },
+  });
+  assert.equal(archiveRun.response.status, 200, archiveRun.response.body);
+  const archiveBody = JSON.parse(archiveRun.response.body);
+  assert.equal(archiveBody.success, true, archiveRun.response.body);
+  assert.equal(archiveBody.registration.archived, true);
+
+  const afterArchive = await runSandbox("/api/exam-registration", {
+    method: "GET",
+    route: "student",
+    db: studentDb,
+  });
+  assert.equal(
+    JSON.parse(afterArchive.response.body).events[0].myArchived,
+    true
+  );
+
+  const withdrawDb = createStudentDb();
+  await runSandbox("/api/exam-registration", {
+    method: "POST",
+    route: "student",
+    db: withdrawDb,
+    body: { eventId: "e1", subjectKeys: ["chinese"], feeCode: "1" },
+  });
+  const withdrawRun = await runSandbox("/api/exam-registration", {
+    method: "DELETE",
+    route: "student",
+    db: withdrawDb,
+    body: { eventId: "e1" },
+  });
+  assert.equal(withdrawRun.response.status, 200, withdrawRun.response.body);
+  assert.equal(JSON.parse(withdrawRun.response.body).success, true);
+  const afterWithdraw = await runSandbox("/api/exam-registration", {
+    method: "GET",
+    route: "student",
+    db: withdrawDb,
+  });
+  const afterWithdrawBody = JSON.parse(afterWithdraw.response.body);
+  assert.deepEqual(afterWithdrawBody.events[0].mySubjectKeys, []);
+  assert.equal(
+    afterWithdrawBody.events[0].registeredAt,
+    null,
+    afterWithdraw.response.body
+  );
+
   process.stdout.write(
-    "[sandbox-f-pilot] F 真正的 count／列表／建立／更新／刪除（含批次）／掛勾／CSV／XLSX／名冊統計／學生登錄已在 --permission 子程序跑通\n"
+    "[sandbox-f-pilot] F 真正的 count／列表／CRUD（含批次）／掛勾／CSV／XLSX／official XLSX／名冊統計／學生登錄、封存、取消已在 --permission 子程序跑通\n"
   );
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
