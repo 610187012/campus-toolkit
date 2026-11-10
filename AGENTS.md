@@ -152,7 +152,7 @@ GitHub repo**（P1-10 lock-only）。模組檔案由 build 前 `scripts/material
 1. **安裝／卸載模組**需 `modules` 權限；屬性分級已退役，預設全體管理員皆可。高風險環境可用 `MODULE_MARKET_INSTALL_ADMINS`（逗號分隔 uid／email）限縮，未設定時不限制。
 1. **核心個資集合對模組唯讀**（名冊四表＋學生個人資料三表）；模組自有集合須在 `dataCollections` 宣告，設施集合（公告／行事曆）一律走掛勾函式。v2 以 `scopedDb` 在 runtime 執行；模組 API context 內的 `getAdminDb()` 也會自動套用 `scopedDb`（宿主內部改用 `getAdminDbRaw()`）。
 1. **模組 API 由宿主 runtime wrapper 強制**：薄轉接檔會自動包上 body 大小上限、rate limit（可選 Upstash 跨實例）、CSRF、完整 session、路徑角色與非管理端 module gate；模組頁面另有 server-side session／角色／module gate，且 page／layout 在 module context 內執行，`getAdminDb()` 也會套用 `scopedDb`。模組仍須自己寫三件套，但不再是唯一防線。
-1. 目前模組仍是 in-process、具伺服器權限；審查與簽章只降低風險，**不是沙箱**。P1-9 第一階段已加靜態能力掃描（禁 `node:` 內建、宿主秘密 env、`process.env` 枚舉、`eval`）與頁面 `scopedDb`，但完整程序／isolate 隔離仍是長期工作。文件與市集頁必須如實揭露。
+1. 目前模組仍是 in-process、具伺服器權限；審查與簽章只降低風險，**不是沙箱**。P1-9 已完成 Phase 1（禁 `node:` 內建、宿主秘密 env、`process.env` 枚舉、`eval`）與 Phase 2A（`moduleSecret()`、子程序 permission POC、頁面 `scopedDb`）；正式程序隔離、session／Firestore RPC 與網路限制見 `docs/模組沙箱設計.md`。文件與市集頁必須如實揭露。
 
 <details>
 <summary>最低限度審核清單</summary>

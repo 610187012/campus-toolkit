@@ -31,6 +31,8 @@
     "security:body-limit-test": "node scripts/test-http-body-policy.mjs",
     "security:totp-crypto-test": "node scripts/test-totp-secret-crypto.mjs",
     "security:rate-limit-test": "node scripts/test-rate-limit-shared.mjs",
+    "security:module-secret-test": "node scripts/test-module-secret.mjs",
+    "sandbox:poc": "node scripts/sandbox-poc.mjs",
     "version:bump": "node scripts/version.js"
   },
   "keywords": [

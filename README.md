@@ -445,6 +445,7 @@ CI（`.github/workflows/ci.yml`）會跑 `npm run lint` 與模組測試；維護
 - [`SECURITY.md`](SECURITY.md) — 漏洞回報方式與安全邊界
 - [`docs/安全檢查與修補.md`](docs/安全檢查與修補.md) — 公開前安全檢查、已修補項目與殘餘風險
 - [`docs/資安待辦清單.md`](docs/資安待辦清單.md) — 依優先順序排列的資安待辦
+- [`docs/模組沙箱設計.md`](docs/模組沙箱設計.md) — P1-9 沙箱威脅模型、架構與分階段計畫
 - [`AGENTS.md`](AGENTS.md) — 模組信任模型（B+）、開發流程與 UI 規範
 - [`docs/GitHub設定清單.md`](docs/GitHub設定清單.md) — branch protection／required checks 等手動設定
 - [`docs/公開前檢查表.md`](docs/公開前檢查表.md) — 發布當天照著打勾的操作清單
