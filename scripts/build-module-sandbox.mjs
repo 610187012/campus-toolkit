@@ -171,6 +171,21 @@ export class NextResponse {
           ? Buffer.from(body).toString("base64")
           : "";
     this.binary = typeof body !== "string" && (body instanceof Uint8Array || Buffer.isBuffer(body));
+    const items = [];
+    this.cookies = {
+      _items: items,
+      set(name, value, options = {}) {
+        items.push({ name, value, options });
+        return this;
+      },
+      get(name) {
+        return items.find((item) => item.name === name);
+      },
+      delete(name) {
+        items.push({ name, value: "", options: { maxAge: 0 } });
+        return this;
+      },
+    };
   }
   static json(body, init = {}) { return new NextResponse(JSON.stringify(body), init); }
 }
@@ -328,6 +343,9 @@ function moduleRoutePath(apiDir, sourceFile) {
   return relDir ? `/api/${relDir}` : "/api";
 }
 
+/** 這些套件留在 node_modules，由子程序直接 import（host 會開對應讀取權限）。 */
+const PASSTHROUGH_PACKAGES = new Set(["jose"]);
+
 function compileModule(moduleValue) {
   const moduleRoot = path.join(ROOT, "src", "modules", moduleValue);
   if (!fs.existsSync(moduleRoot)) throw new Error(`找不到模組：${moduleRoot}`);
@@ -375,6 +393,8 @@ function compileModule(moduleValue) {
         const shim = path.join(shimDir, "server-only.mjs");
         fs.writeFileSync(shim, "export {};\n");
         replacements.push([spec, relativeSpecifier(outFile, shim)]);
+      } else if (PASSTHROUGH_PACKAGES.has(spec)) {
+        // 留在 node_modules，由子程序直接 import（不建立 shim、不改寫）。
       } else {
         const parsed = parseClause(clause);
         if (!hostImports.has(spec)) hostImports.set(spec, { names: new Set(), hasDefault: false });
@@ -392,6 +412,7 @@ function compileModule(moduleValue) {
         fs.writeFileSync(shim, "export {};\n");
         replacements.push([spec, relativeSpecifier(outFile, shim)]);
       } else if (!spec.startsWith(".")) {
+        if (PASSTHROUGH_PACKAGES.has(spec)) continue;
         if (!hostImports.has(spec)) hostImports.set(spec, { names: new Set(), hasDefault: false });
         replacements.push([spec, relativeSpecifier(outFile, path.join(shimDir, shimFileName(spec)))]);
       }

@@ -21,6 +21,7 @@ import { createHostRpc } from "@/lib/module-sandbox/host";
 
 const SANDBOX_ROOT = path.join(process.cwd(), ".module-sandbox");
 const XLSX_PATH = path.join(process.cwd(), "node_modules", "xlsx", "xlsx.mjs");
+const PASSTHROUGH_READS = [path.join(process.cwd(), "node_modules", "jose")];
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 const RUNNER_SOURCE = `
@@ -82,17 +83,37 @@ process.on("message", async (message) => {
   if (message?.type !== "request") return;
   try {
     const url = new URL(message.url, "http://sandbox.local");
+    const cookieMap = new Map();
+    for (const part of String(message.headers?.cookie ?? "").split(";")) {
+      const index = part.indexOf("=");
+      if (index > 0) cookieMap.set(part.slice(0, index).trim(), part.slice(index + 1).trim());
+    }
     const request = {
       method: message.method,
       nextUrl: url,
       headers: new Headers(message.headers ?? {}),
       json: async () => (message.body ? JSON.parse(message.body) : {}),
+      text: async () => message.body ?? "",
       formData: async () => new FormData(),
+      cookies: {
+        get: (name) => (cookieMap.has(name) ? { name, value: cookieMap.get(name) } : undefined),
+        has: (name) => cookieMap.has(name),
+      },
     };
     const handler = route[message.method];
     if (!handler) throw new Error("沙箱尚未支援 method：" + message.method);
     const response = await handler(request);
-    process.send({ type: "response", ok: true, response });
+    process.send({
+      type: "response",
+      ok: true,
+      response: {
+        status: response?.status ?? 200,
+        headers: response?.headers ?? {},
+        body: typeof response?.body === "string" ? response.body : "",
+        binary: response?.binary === true,
+        cookies: Array.isArray(response?.cookies?._items) ? response.cookies._items : [],
+      },
+    });
   } catch (error) {
     process.send({
       type: "response",
@@ -127,6 +148,7 @@ export interface SandboxResponse {
   headers: Record<string, string>;
   body: string;
   binary: boolean;
+  cookies: Array<{ name: string; value: string; options?: Record<string, unknown> }>;
 }
 
 export type SandboxRpc = (method: string, params: unknown) => Promise<unknown> | unknown;
@@ -184,11 +206,17 @@ export async function runSandboxedRequest(options: {
       `--allow-fs-read=${runnerPath}`,
     ];
     if (fs.existsSync(XLSX_PATH)) args.push(`--allow-fs-read=${XLSX_PATH}`);
+    for (const readPath of PASSTHROUGH_READS) {
+      if (fs.existsSync(readPath)) args.push(`--allow-fs-read=${readPath}`);
+    }
     args.push(runnerPath);
 
     const child = spawn(process.execPath, args, {
       cwd: process.cwd(),
       env: {
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(([key]) => key.startsWith("CANVA_"))
+        ),
         PATH: process.env.PATH ?? "",
         NODE_ENV: process.env.NODE_ENV ?? "production",
         MODULE_SANDBOX_ROUTE: routeFile,
@@ -260,6 +288,7 @@ export async function runSandboxedRequest(options: {
           headers: response?.headers ?? {},
           body: typeof response?.body === "string" ? response.body : "",
           binary: response?.binary === true,
+          cookies: Array.isArray(response?.cookies) ? response.cookies : [],
         });
       }
     });
@@ -315,10 +344,18 @@ export function withModuleSandbox<T extends RouteHandler>(
       const responseBody = result.binary
         ? new Uint8Array(Buffer.from(result.body, "base64"))
         : result.body;
-      return new NextResponse(responseBody, {
+      const nextResponse = new NextResponse(responseBody, {
         status: result.status,
         headers: result.headers,
       });
+      for (const cookie of result.cookies) {
+        nextResponse.cookies.set(
+          cookie.name,
+          cookie.value,
+          cookie.options as Parameters<typeof nextResponse.cookies.set>[2]
+        );
+      }
+      return nextResponse;
     } catch (error) {
       console.error(`[module-sandbox] ${moduleValue} ${routePath} 執行失敗`, error);
       return NextResponse.json(

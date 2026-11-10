@@ -25,6 +25,7 @@
     "module:sandbox-e-student-test": "node scripts/test-sandbox-e-student.mjs",
     "module:sandbox-e-write-test": "node scripts/test-sandbox-e-write.mjs",
     "module:sandbox-e-submit-test": "node scripts/test-sandbox-e-submit.mjs",
+    "module:sandbox-e-canva-test": "node scripts/test-sandbox-e-canva.mjs",
     "module:materialize-test": "node scripts/test-materialize-modules.mjs",
     "module:capability-test": "node scripts/test-module-capability-scan.mjs",
     "module:install": "node scripts/module-cli.mjs install",
