@@ -28,6 +28,11 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // 沙箱編譯產物不是 import 進程式，而是執行期讀取；明確納入 tracing，
+  // 避免 serverless 部署只帶 .next 而漏掉 .module-sandbox。
+  outputFileTracingIncludes: {
+    "/api/**": [".module-sandbox/**/*"],
+  },
   async headers() {
     return [
       {

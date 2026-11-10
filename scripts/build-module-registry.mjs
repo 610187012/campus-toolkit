@@ -697,13 +697,19 @@ function renderApiAdapter(moduleValue, targetRel, sourcePath) {
     return `export * from "@/modules/${moduleValue}/${targetRel}/route";\n`;
   }
   const configs = ROUTE_CONFIG_EXPORTS.filter((name) => exportsName(source, name));
+  const routePath = targetRel.startsWith("api/") ? `/${targetRel}` : `/api/${targetRel}`;
   const lines = [
     `import * as handlers from "@/modules/${moduleValue}/${targetRel}/route";`,
     `import { withModuleRuntime } from "@/lib/module-runtime";`,
+    `import { withModuleSandbox } from "@/lib/module-sandbox/manager";`,
     "",
     ...methods.map(
       (method) =>
-        `export const ${method} = withModuleRuntime(${JSON.stringify(moduleValue)}, handlers.${method});`
+        `export const ${method} = withModuleRuntime(${JSON.stringify(
+          moduleValue
+        )}, withModuleSandbox(${JSON.stringify(moduleValue)}, ${JSON.stringify(
+          routePath
+        )}, handlers.${method}));`
     ),
   ];
   if (configs.length > 0) {

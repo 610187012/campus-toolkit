@@ -1,0 +1,298 @@
+import "server-only";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import { NextRequest, NextResponse } from "next/server";
+import { verifySession } from "@/lib/dal";
+import { getClientIp } from "@/lib/audit";
+import { createHostRpc } from "@/lib/module-sandbox/host";
+
+/**
+ * 模組沙箱 runtime manager（P1-9 Phase 2C）。
+ *
+ * 由 `scripts/build-module-sandbox.mjs` 產生 `.module-sandbox/<value>/`；
+ * 本檔在執行期啟動受限子程序，把請求送進去，並處理子程序的 capability RPC。
+ *
+ * 啟用方式：`MODULE_SANDBOX_MODULES=examRegistration`（逗號分隔）。
+ * 未啟用、或找不到編譯產物時，adapter 會回退到原本的 in-process handler。
+ */
+
+const SANDBOX_ROOT = path.join(process.cwd(), ".module-sandbox");
+const XLSX_PATH = path.join(process.cwd(), "node_modules", "xlsx", "xlsx.mjs");
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+const RUNNER_SOURCE = `
+const pending = new Map();
+let seq = 0;
+
+function rpc(method, params) {
+  return new Promise((resolve, reject) => {
+    const id = ++seq;
+    pending.set(id, { resolve, reject });
+    process.send({ type: "rpc", id, method, params });
+  });
+}
+
+globalThis.__sandboxRpc = rpc;
+
+process.on("message", (message) => {
+  if (message?.type !== "rpc-result") return;
+  const entry = pending.get(message.id);
+  if (!entry) return;
+  pending.delete(message.id);
+  if (message.ok) entry.resolve(message.result);
+  else entry.reject(new Error(message.error ?? "RPC 失敗"));
+});
+
+const { pathToFileURL } = await import("node:url");
+const route = await import(pathToFileURL(process.env.MODULE_SANDBOX_ROUTE).href);
+
+process.on("message", async (message) => {
+  if (message?.type !== "request") return;
+  try {
+    const url = new URL(message.url, "http://sandbox.local");
+    const request = {
+      method: message.method,
+      nextUrl: url,
+      headers: new Headers(message.headers ?? {}),
+      json: async () => (message.body ? JSON.parse(message.body) : {}),
+      formData: async () => new FormData(),
+    };
+    const handler = route[message.method];
+    if (!handler) throw new Error("沙箱尚未支援 method：" + message.method);
+    const response = await handler(request);
+    process.send({ type: "response", ok: true, response });
+  } catch (error) {
+    process.send({
+      type: "response",
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+process.send({ type: "ready" });
+`;
+
+let cachedRunnerPath: string | null = null;
+
+function ensureRunnerFile(): string {
+  if (cachedRunnerPath && fs.existsSync(cachedRunnerPath)) return cachedRunnerPath;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "campus-module-sandbox-"));
+  const file = path.join(dir, "runner.mjs");
+  fs.writeFileSync(file, RUNNER_SOURCE, "utf-8");
+  cachedRunnerPath = file;
+  return file;
+}
+
+export interface SandboxRequest {
+  url: string;
+  headers: Record<string, string>;
+  body?: string;
+}
+
+export interface SandboxResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  binary: boolean;
+}
+
+export type SandboxRpc = (method: string, params: unknown) => Promise<unknown> | unknown;
+
+interface SandboxManifest {
+  moduleValue: string;
+  routes: Array<{ path: string; file: string; methods: string[] }>;
+}
+
+/** 該模組是否啟用沙箱（環境變數＋編譯產物都存在才算）。 */
+export function isSandboxEnabled(moduleValue: string): boolean {
+  const list = (process.env.MODULE_SANDBOX_MODULES ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!list.includes(moduleValue)) return false;
+  return fs.existsSync(path.join(SANDBOX_ROOT, moduleValue, "manifest.json"));
+}
+
+/**
+ * 在受限子程序執行一次模組請求。
+ *
+ * `bundleDir` 供測試注入；正式路徑使用 `.module-sandbox/<value>/`。
+ */
+export async function runSandboxedRequest(options: {
+  moduleValue: string;
+  routePath: string;
+  method: string;
+  request: SandboxRequest;
+  rpc: SandboxRpc;
+  timeoutMs?: number;
+  bundleDir?: string;
+  clientIp?: string;
+}): Promise<SandboxResponse> {
+  const bundleDir = options.bundleDir ?? path.join(SANDBOX_ROOT, options.moduleValue);
+  const manifestPath = path.join(bundleDir, "manifest.json");
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`找不到沙箱 manifest：${manifestPath}`);
+  }
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as SandboxManifest;
+  const route = manifest.routes.find(
+    (item) => item.path === options.routePath && item.methods.includes(options.method)
+  );
+  if (!route) {
+    throw new Error(`沙箱沒有對應路由：${options.method} ${options.routePath}`);
+  }
+  const runnerPath = ensureRunnerFile();
+  const routeFile = path.join(bundleDir, route.file);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  return new Promise<SandboxResponse>((resolve, reject) => {
+    const args = [
+      "--permission",
+      `--allow-fs-read=${bundleDir}`,
+      `--allow-fs-read=${runnerPath}`,
+    ];
+    if (fs.existsSync(XLSX_PATH)) args.push(`--allow-fs-read=${XLSX_PATH}`);
+    args.push(runnerPath);
+
+    const child = spawn(process.execPath, args, {
+      cwd: process.cwd(),
+      env: {
+        PATH: process.env.PATH ?? "",
+        NODE_ENV: process.env.NODE_ENV ?? "production",
+        MODULE_SANDBOX_ROUTE: routeFile,
+        SANDBOX_CLIENT_IP: options.clientIp ?? "",
+      },
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
+    });
+
+    let settled = false;
+    let stderr = "";
+    const timer = globalThis.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      reject(new Error(`模組沙箱逾時（${timeoutMs}ms）`));
+    }, timeoutMs);
+
+    child.stderr?.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      globalThis.clearTimeout(timer);
+      reject(error);
+    });
+    child.on("message", (message: unknown) => {
+      const data = message as Record<string, unknown>;
+      if (data?.type === "ready") {
+        child.send({
+          type: "request",
+          method: options.method,
+          url: options.request.url,
+          headers: options.request.headers,
+          body: options.request.body,
+        });
+        return;
+      }
+      if (data?.type === "rpc") {
+        Promise.resolve(options.rpc(String(data.method), data.params))
+          .then((result) => {
+            child.send({ type: "rpc-result", id: data.id, ok: true, result });
+          })
+          .catch((error: unknown) => {
+            child.send({
+              type: "rpc-result",
+              id: data.id,
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        return;
+      }
+      if (data?.type === "response") {
+        if (settled) return;
+        settled = true;
+        globalThis.clearTimeout(timer);
+        child.kill();
+        if (!data.ok) {
+          reject(new Error(`模組沙箱執行失敗：${String(data.error)}\n${stderr}`));
+          return;
+        }
+        const response = data.response as SandboxResponse;
+        resolve({
+          status: Number(response?.status ?? 200),
+          headers: response?.headers ?? {},
+          body: typeof response?.body === "string" ? response.body : "",
+          binary: response?.binary === true,
+        });
+      }
+    });
+  });
+}
+
+type RouteHandler = (request: NextRequest, context?: unknown) => Promise<Response> | Response;
+
+/**
+ * 包裝模組 API handler：沙箱啟用時走子程序，否則原樣呼叫。
+ */
+export function withModuleSandbox<T extends RouteHandler>(
+  moduleValue: string,
+  routePath: string,
+  original: T
+): T {
+  const wrapped = async (request: NextRequest, context?: unknown): Promise<Response> => {
+    if (!isSandboxEnabled(moduleValue)) return original(request, context);
+
+    const contentType = request.headers.get("content-type") ?? "";
+    if (contentType.includes("multipart/form-data")) {
+      // 檔案上傳尚未接到沙箱窗口，先回退原流程。
+      return original(request, context);
+    }
+
+    try {
+      const session = await verifySession();
+      if (!session) {
+        return NextResponse.json(
+          { success: false, message: "未登入或登入已失效" },
+          { status: 401 }
+        );
+      }
+      const method = request.method.toUpperCase();
+      const body =
+        method === "GET" || method === "HEAD" ? undefined : await request.text();
+      const result = await runSandboxedRequest({
+        moduleValue,
+        routePath,
+        method,
+        request: {
+          url: `${request.nextUrl.pathname}${request.nextUrl.search}`,
+          headers: Object.fromEntries(request.headers.entries()),
+          body,
+        },
+        rpc: createHostRpc({
+          moduleValue,
+          session,
+          ip: getClientIp(request),
+        }),
+        clientIp: getClientIp(request),
+      });
+      const responseBody = result.binary
+        ? new Uint8Array(Buffer.from(result.body, "base64"))
+        : result.body;
+      return new NextResponse(responseBody, {
+        status: result.status,
+        headers: result.headers,
+      });
+    } catch (error) {
+      console.error(`[module-sandbox] ${moduleValue} ${routePath} 執行失敗`, error);
+      return NextResponse.json(
+        { success: false, message: "模組執行失敗，請稍後再試" },
+        { status: 502 }
+      );
+    }
+  };
+  return wrapped as T;
+}

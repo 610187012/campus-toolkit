@@ -210,18 +210,25 @@ export async function cachedListRead(_key, load) { return { data: await load(), 
 export async function invalidateAdminListCache() {}
 `;
 const AUDIT_SHIM = `
-export function getClientIp() { return "sandbox"; }
-export async function logActivity() {}
+export function getClientIp() { return process.env.SANDBOX_CLIENT_IP ?? "sandbox"; }
+export async function logActivity(input) { return globalThis.__sandboxRpc("audit.log", input); }
 `;
 const ROSTER_SHIM = `
 const MAP = { student: "rosterStudents", parent: "rosterParents", staff: "rosterStaff", admin: "rosterAdmins" };
 export function rosterCollection(role) { return MAP[role] ?? "roster-" + role; }
-export function isActiveEntry() { return true; }
-export async function loadPeriodEntries() { return new Map(); }
+export function isActiveEntry(entry) {
+  if (!entry) return false;
+  if (typeof entry.status === "string") return entry.status === "active";
+  return true;
+}
+export async function loadPeriodEntries(period, role) {
+  const pairs = await globalThis.__sandboxRpc("roster.loadPeriodEntries", { period, role });
+  return new Map(pairs);
+}
 `;
 const SETTINGS_SHIM = `
-export async function getCurrentPeriod() { return { academicYear: 114, semester: 1 }; }
-export async function getCacheTtlSeconds() { return 30; }
+export async function getCurrentPeriod() { return globalThis.__sandboxRpc("settings.period", {}); }
+export async function getCacheTtlSeconds() { return globalThis.__sandboxRpc("settings.cacheTtl", {}); }
 `;
 const ANNOUNCEMENTS_SHIM = `
 export async function publishFromModule(input) { return globalThis.__sandboxRpc("hook.publishAnnouncement", input); }
