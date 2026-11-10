@@ -200,7 +200,11 @@ class Query {
     return this;
   }
   doc(id) {
-    return new DocRef(this.collection, id);
+    const resolvedId =
+      id ??
+      globalThis.crypto?.randomUUID?.() ??
+      \`\${Date.now()}-\${Math.random().toString(16).slice(2)}\`;
+    return new DocRef(this.collection, resolvedId);
   }
   async get() {
     const result = await rpc("db.query", {
@@ -277,14 +281,24 @@ export const RATE = new Proxy({}, { get: () => ({ limit: 9999, windowMs: 60000 }
 `;
 
 const DAL_SHIM = `
-const session = { uid: "u1", role: "admin", account: "demo", name: "Demo Admin" };
-export async function requireModulePermission() { return { session, denial: null }; }
-export async function requireRole() { return { session, denial: null }; }
-export async function requireAdminModule() { return { session, denial: null }; }
-export async function requireSuperAdmin() { return { session, denial: null, isSuper: true }; }
+const session = {
+  uid: "u1",
+  role: "admin",
+  account: "demo",
+  name: "Demo Admin",
+  displayName: "Demo Admin",
+};
+export async function requireModulePermission() { return { context: { session }, session, denial: null }; }
+export async function requireRole() { return { context: { session }, session, denial: null }; }
+export async function requireAdminModule() { return { context: { session }, session, denial: null }; }
+export async function requireSuperAdmin() { return { context: { session }, session, denial: null, isSuper: true }; }
 export function toAuthResponse(denial) { return denial; }
 export async function verifySession() { return session; }
 export function isSuperAdmin() { return true; }
+`;
+
+const CSRF_SHIM = `
+export function assertSameOrigin() { return null; }
 `;
 
 const CACHE_SHIM = `
@@ -317,6 +331,7 @@ const KNOWN_SHIMS = {
   "@/lib/firebase-admin": DB_SHIM,
   "@/lib/rate-limit": RATE_SHIM,
   "@/lib/dal": DAL_SHIM,
+  "@/lib/csrf": CSRF_SHIM,
   "@/lib/read-cache": CACHE_SHIM,
   "@/lib/list-cache": CACHE_SHIM,
   "@/lib/audit": AUDIT_SHIM,
@@ -373,20 +388,22 @@ process.on("message", (message) => {
   else entry.reject(new Error(message.error ?? "RPC 失敗"));
 });
 
-const { GET } = await import(new URL("./api/admin/exam-registration/route.mjs", import.meta.url));
+const { GET, POST, PATCH, DELETE } = await import(new URL("./api/admin/exam-registration/route.mjs", import.meta.url));
 
 process.on("message", async (message) => {
   if (message?.type !== "request") return;
   try {
     const url = new URL(message.path, "http://sandbox.local");
     const request = {
-      method: "GET",
+      method: message.method ?? "GET",
       nextUrl: url,
       headers: new Headers(message.headers ?? {}),
-      json: async () => ({}),
+      json: async () => message.body ?? {},
       formData: async () => new FormData(),
     };
-    const response = await GET(request);
+    const handler = { GET, POST, PATCH, DELETE }[message.method ?? "GET"];
+    if (!handler) throw new Error("沙箱尚未支援 method：" + message.method);
+    const response = await handler(request);
     process.send({ type: "response", ok: true, response });
   } catch (error) {
     process.send({ type: "response", ok: false, error: error instanceof Error ? error.message : String(error) });
@@ -401,46 +418,48 @@ fs.writeFileSync(path.join(temp, "runner.mjs"), RUNNER_SOURCE);
 const ALLOWED_COLLECTIONS = new Set(
   Array.isArray(MANIFEST.dataCollections) ? MANIFEST.dataCollections : []
 );
-const HOST_DB = {
-  examEvents: [
-    {
-      id: "e1",
-      data: {
-        title: "第一次模擬考",
-        examType: "simulation",
-        examDate: "2026-01-10",
-        examEndDate: "2026-01-10",
-        status: "open",
-        updatedAt: 1,
-        createdAt: 1,
+function createDb() {
+  return {
+    examEvents: [
+      {
+        id: "e1",
+        data: {
+          title: "第一次模擬考",
+          examType: "mock",
+          examDate: "2026-01-10",
+          examEndDate: "2026-01-10",
+          status: "open",
+          updatedAt: 1,
+          createdAt: 1,
+        },
       },
-    },
-    {
-      id: "e2",
-      data: {
-        title: "第二次模擬考",
-        examType: "simulation",
-        examDate: "2026-02-10",
-        examEndDate: "2026-02-10",
-        status: "open",
-        updatedAt: 2,
-        createdAt: 2,
+      {
+        id: "e2",
+        data: {
+          title: "第二次模擬考",
+          examType: "mock",
+          examDate: "2026-02-10",
+          examEndDate: "2026-02-10",
+          status: "open",
+          updatedAt: 2,
+          createdAt: 2,
+        },
       },
-    },
-    {
-      id: "e3",
-      data: {
-        title: "第三次模擬考",
-        examType: "simulation",
-        examDate: "2026-03-10",
-        examEndDate: "2026-03-10",
-        status: "closed",
-        updatedAt: 3,
-        createdAt: 3,
+      {
+        id: "e3",
+        data: {
+          title: "第三次模擬考",
+          examType: "mock",
+          examDate: "2026-03-10",
+          examEndDate: "2026-03-10",
+          status: "closed",
+          updatedAt: 3,
+          createdAt: 3,
+        },
       },
-    },
-  ],
-};
+    ],
+  };
+}
 
 function applyFilters(rows, filters = []) {
   return rows.filter((row) =>
@@ -470,7 +489,7 @@ function applyFilters(rows, filters = []) {
   );
 }
 
-function handleRpc(method, params) {
+function handleRpc(method, params, db) {
   if (method === "session.get") {
     return { session: { uid: "u1", role: "admin", account: "demo" }, denial: null };
   }
@@ -479,7 +498,7 @@ function handleRpc(method, params) {
     if (!ALLOWED_COLLECTIONS.has(collection)) {
       throw new Error(`未宣告集合：${collection}`);
     }
-    let rows = applyFilters(HOST_DB[collection] ?? [], params.filters);
+    let rows = applyFilters(db[collection] ?? [], params.filters);
     if (method === "db.count") return { count: rows.length };
     if (params.orderBy) {
       const { field, direction } = params.orderBy;
@@ -495,10 +514,44 @@ function handleRpc(method, params) {
     }
     return { rows };
   }
+  if (method === "db.doc.get") {
+    const collection = params?.collection;
+    if (!ALLOWED_COLLECTIONS.has(collection)) {
+      throw new Error(`未宣告集合：${collection}`);
+    }
+    const row = (db[collection] ?? []).find((item) => item.id === params.id);
+    return { exists: Boolean(row), data: row?.data ?? null };
+  }
+  if (method === "db.doc.set" || method === "db.doc.update") {
+    const collection = params?.collection;
+    if (!ALLOWED_COLLECTIONS.has(collection)) {
+      throw new Error(`未宣告集合：${collection}`);
+    }
+    const rows = db[collection] ?? (db[collection] = []);
+    const id = params.id;
+    const existing = rows.find((row) => row.id === id);
+    if (method === "db.doc.set") {
+      if (existing) existing.data = params.data;
+      else rows.push({ id, data: params.data });
+      return { ok: true };
+    }
+    if (!existing) throw new Error(`文件不存在：${collection}/${id}`);
+    existing.data = { ...existing.data, ...params.data };
+    return { ok: true };
+  }
+  if (method === "db.doc.delete") {
+    const collection = params?.collection;
+    if (!ALLOWED_COLLECTIONS.has(collection)) {
+      throw new Error(`未宣告集合：${collection}`);
+    }
+    db[collection] = (db[collection] ?? []).filter((row) => row.id !== params.id);
+    return { ok: true };
+  }
   throw new Error(`未知 RPC：${method}`);
 }
 
-function runSandbox(requestPath) {
+function runSandbox(requestPath, options = {}) {
+  const db = options.db ?? createDb();
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
@@ -530,12 +583,17 @@ function runSandbox(requestPath) {
     });
     child.on("message", (message) => {
       if (message?.type === "ready") {
-        child.send({ type: "request", path: requestPath });
+        child.send({
+          type: "request",
+          path: requestPath,
+          method: options.method ?? "GET",
+          body: options.body,
+        });
         return;
       }
       if (message?.type === "rpc") {
         try {
-          const result = handleRpc(message.method, message.params);
+          const result = handleRpc(message.method, message.params, db);
           child.send({ type: "rpc-result", id: message.id, ok: true, result });
         } catch (error) {
           child.send({
@@ -578,8 +636,54 @@ try {
     "應依 examDate 由新到舊"
   );
 
+  const sharedDb = createDb();
+  const createRun = await runSandbox("/api/admin/exam-registration", {
+    method: "POST",
+    db: sharedDb,
+    body: {
+      title: "沙箱測試場次",
+      examType: "mock",
+      examDate: "2026-12-01",
+      examEndDate: "2026-12-01",
+      deadline: Date.now() + 86400000,
+      target: { grades: ["1"], classes: [] },
+      subjects: [{ key: "chinese", label: "國文" }],
+      status: "draft",
+    },
+  });
+  assert.equal(createRun.response.status, 200, createRun.response.body);
+  const createBody = JSON.parse(createRun.response.body);
+  assert.equal(createBody.success, true, createRun.response.body);
+  assert.equal(createBody.events.length, 4);
+  assert.equal(createBody.events[0].title, "沙箱測試場次");
+  assert.equal(createBody.events[0].status, "draft");
+  const createdId = createBody.events[0].id;
+
+  const patchRun = await runSandbox("/api/admin/exam-registration", {
+    method: "PATCH",
+    db: sharedDb,
+    body: { id: createdId, title: "更新後場次" },
+  });
+  assert.equal(patchRun.response.status, 200, patchRun.response.body);
+  const patchBody = JSON.parse(patchRun.response.body);
+  assert.equal(patchBody.success, true, patchRun.response.body);
+  assert.ok(
+    patchBody.events.some((event) => event.id === createdId && event.title === "更新後場次"),
+    patchRun.response.body
+  );
+
+  const deleteRun = await runSandbox(
+    `/api/admin/exam-registration?id=${encodeURIComponent(createdId)}`,
+    { method: "DELETE", db: sharedDb }
+  );
+  assert.equal(deleteRun.response.status, 200, deleteRun.response.body);
+  const deleteBody = JSON.parse(deleteRun.response.body);
+  assert.equal(deleteBody.success, true, deleteRun.response.body);
+  assert.equal(deleteBody.events.length, 3);
+  assert.ok(!deleteBody.events.some((event) => event.id === createdId));
+
   process.stdout.write(
-    "[sandbox-f-pilot] F 真正的 count／場次列表已在 --permission 子程序跑通\n"
+    "[sandbox-f-pilot] F 真正的 count／列表／建立／更新／刪除已在 --permission 子程序跑通\n"
   );
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
