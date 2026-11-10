@@ -1,6 +1,6 @@
 import "server-only";
 import type { DocumentReference } from "firebase-admin/firestore";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDbRaw } from "@/lib/firebase-admin";
 import { cachedRead, cachedSettingDoc, invalidateReadCache } from "@/lib/read-cache";
 import { getCurrentPeriod } from "@/lib/settings-server";
 import {
@@ -91,7 +91,7 @@ const PURGE_SCAN_LIMIT = 200;
 /** 讀取行事曆模組設定（settings/calendar，30 秒快取） */
 export async function getCalendarSettings(): Promise<CalendarSettings> {  try {
     const raw = await cachedSettingDoc(CALENDAR_SETTINGS_DOC_ID, async () => {
-      const snap = await getAdminDb()
+      const snap = await getAdminDbRaw()
         .collection("settings")
         .doc(CALENDAR_SETTINGS_DOC_ID)
         .get();
@@ -110,7 +110,7 @@ export async function getCalendarSettings(): Promise<CalendarSettings> {  try {
 export async function getSchoolPeriods(): Promise<SchoolPeriodRow[]> {
   try {
     const raw = await cachedSettingDoc(PERIODS_DOC_ID, async () => {
-      const snap = await getAdminDb().collection("settings").doc(PERIODS_DOC_ID).get();
+      const snap = await getAdminDbRaw().collection("settings").doc(PERIODS_DOC_ID).get();
       return snap.exists ? snap.data() ?? null : null;
     });
     return readSchoolPeriods(raw).periods;
@@ -123,7 +123,7 @@ export async function getSchoolPeriods(): Promise<SchoolPeriodRow[]> {
 export async function getSchoolClassOptions(): Promise<CalendarGradeOption[]> {
   try {
     const raw = await cachedSettingDoc(CLASSES_DOC_ID, async () => {
-      const snap = await getAdminDb().collection("settings").doc(CLASSES_DOC_ID).get();
+      const snap = await getAdminDbRaw().collection("settings").doc(CLASSES_DOC_ID).get();
       return snap.exists ? snap.data() ?? null : null;
     });
     return readSchoolClasses(raw).grades.map((grade) => ({
@@ -207,7 +207,7 @@ export async function publishScheduleFromModule(
     throw new Error("publishScheduleFromModule: sourceModule 必填");
   }
 
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const col = db.collection(CALENDAR_COLLECTION);
   const sourceRef = typeof input.sourceRef === "string" ? input.sourceRef.trim() : "";
 
@@ -291,7 +291,7 @@ export async function updateCalendarEvent(
   patch: PublishScheduleFromModuleInput,
   options?: { allowHardDelete?: boolean }
 ): Promise<{ deleted: boolean }> {
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const ref = db.collection(CALENDAR_COLLECTION).doc(id);
   const snap = await ref.get();
   if (!snap.exists) throw new Error("查無此行程");
@@ -371,7 +371,7 @@ export async function batchCancelCalendarEvents(
     const deleted = await batchDeleteCalendarEventsHard(unique);
     return { cancelled: 0, deleted };
   }
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   // getAll 分塊 200：先確認存在再批次更新（update 對不存在的文件會使整批失敗）
   const existing: string[] = [];
   for (let i = 0; i < unique.length; i += 200) {
@@ -404,7 +404,7 @@ export async function batchCancelCalendarEvents(
 export async function batchDeleteCalendarEventsHard(ids: string[]): Promise<number> {
   const unique = [...new Set(ids)].slice(0, BATCH_IDS_MAX);
   if (unique.length === 0) return 0;
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const reminderIds: string[] = [];
   for (let i = 0; i < unique.length; i += IN_QUERY_CHUNK) {
     const remSnap = await db
@@ -424,7 +424,7 @@ export async function batchDeleteCalendarEventsHard(ids: string[]): Promise<numb
 
 /** 真實刪除單則行程及其所有個人提醒文件（下架原則＝真實刪除時使用） */
 async function hardDeleteCalendarEvent(id: string): Promise<void> {
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const remSnap = await db
     .collection(CALENDAR_REMINDERS_COLLECTION)
     .where("eventId", "==", id)
@@ -436,7 +436,7 @@ async function hardDeleteCalendarEvent(id: string): Promise<void> {
   await deleteInBatches(db, refs);
 }
 
-async function deleteInBatches(db: ReturnType<typeof getAdminDb>, refs: DocumentReference[]) {
+async function deleteInBatches(db: ReturnType<typeof getAdminDbRaw>, refs: DocumentReference[]) {
   for (let i = 0; i < refs.length; i += DELETE_BATCH_LIMIT) {
     const batch = db.batch();
     refs.slice(i, i + DELETE_BATCH_LIMIT).forEach((ref) => batch.delete(ref));
@@ -451,7 +451,7 @@ async function deleteInBatches(db: ReturnType<typeof getAdminDb>, refs: Document
  * 由管理端清單載入時呼叫（policies.hardDeleteCancelled=true 才會執行）。
  */
 export async function purgeDownCalendarEvents(): Promise<number> {
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const snap = await db
     .collection(CALENDAR_COLLECTION)
     .where("status", "==", "cancelled")
@@ -490,7 +490,7 @@ export function canEditCalendarEvent(
 
 /** 讀取單則行程（管理端編輯用） */
 export async function getCalendarEvent(id: string): Promise<CalendarEventRecord | null> {
-  const snap = await getAdminDb().collection(CALENDAR_COLLECTION).doc(id).get();
+  const snap = await getAdminDbRaw().collection(CALENDAR_COLLECTION).doc(id).get();
   if (!snap.exists) return null;
   return readCalendarEventRecord(id, snap.data());
 }
@@ -501,7 +501,7 @@ export async function getCalendarEvent(id: string): Promise<CalendarEventRecord 
  */
 export async function listAdminCalendarEvents(): Promise<AdminCalendarEventRow[]> {
   const settings = await getCalendarSettings();
-  const snap = await getAdminDb()
+  const snap = await getAdminDbRaw()
     .collection(CALENDAR_COLLECTION)
     .orderBy("startAt", "desc")
     .limit(ADMIN_LIST_LIMIT)
@@ -525,7 +525,7 @@ export async function countCalendarEventsByStatus(): Promise<{
   active: number;
   cancelled: number;
 }> {
-  const col = getAdminDb().collection(CALENDAR_COLLECTION);
+  const col = getAdminDbRaw().collection(CALENDAR_COLLECTION);
   const [activeSnap, cancelledSnap] = await Promise.all([
     col.where("status", "==", "active").count().get(),
     col.where("status", "==", "cancelled").count().get(),
@@ -559,7 +559,7 @@ export async function listCalendarEvents(
   const cacheKey = `${LIST_CACHE_PREFIX}${role ?? "public"}:${classCode || "*"}:${from}`;
   return cachedRead(cacheKey, LIST_TTL_MS, async () => {
     const settings = await getCalendarSettings();
-    const snap = await getAdminDb()
+    const snap = await getAdminDbRaw()
       .collection(CALENDAR_COLLECTION)
       .where("startAt", ">=", from)
       .orderBy("startAt")
@@ -615,7 +615,7 @@ export async function listSurfaceCalendarEvents(
   return cachedRead(cacheKey, SURFACE_TTL_MS, async () => {
     const settings = await getCalendarSettings();
     const isAdmin = role === "admin";
-    const snap = await getAdminDb()
+    const snap = await getAdminDbRaw()
       .collection(CALENDAR_COLLECTION)
       .where("startAt", ">=", from)
       .orderBy("startAt")
@@ -664,7 +664,7 @@ export async function listPublicCalendarEvents(limit: number = 20): Promise<Cale
   return cachedRead(cacheKey, SURFACE_TTL_MS, async () => {
     const settings = await getCalendarSettings();
     const from = startOfTodayMs();
-    const snap = await getAdminDb()
+    const snap = await getAdminDbRaw()
       .collection(CALENDAR_COLLECTION)
       .where("startAt", ">=", from)
       .orderBy("startAt")
@@ -719,7 +719,7 @@ export async function listPublicCalendarEventsInRange(
     // 回溯限制【管理員設定 policies.publicPastMonths】：起點鉗制在允許的最早月初
     const earliestFrom = computePublicCalendarEarliestFrom(settings.policies.publicPastMonths ?? 1);
     const effectiveFrom = Math.max(fromMs, earliestFrom);
-    const snap = await getAdminDb()
+    const snap = await getAdminDbRaw()
       .collection(CALENDAR_COLLECTION)
       .where("startAt", ">=", effectiveFrom)
       .where("startAt", "<=", toMs)
@@ -815,7 +815,7 @@ export async function saveCalendarSettings(input: {
     surfaces,
     policies,
   };
-  await getAdminDb()
+  await getAdminDbRaw()
     .collection("settings")
     .doc(CALENDAR_SETTINGS_DOC_ID)
     .set(next, { merge: false });
@@ -840,7 +840,7 @@ export async function toggleCalendarReminder(
   if (!event || !isCalendarEventActive(event)) {
     throw new Error("行程不存在或已無法提醒");
   }
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const ref = db.collection(CALENDAR_REMINDERS_COLLECTION).doc(reminderDocId(eventId, uid));
   const snap = await ref.get();
   if (snap.exists) {
@@ -854,7 +854,7 @@ export async function toggleCalendarReminder(
 /** 使用者已設定提醒的行程 id 清單（不做跨請求快取：提醒變動頻繁） */
 export async function listMyCalendarReminderIds(uid: string): Promise<string[]> {
   if (!uid) return [];
-  const snap = await getAdminDb()
+  const snap = await getAdminDbRaw()
     .collection(CALENDAR_REMINDERS_COLLECTION)
     .where("uid", "==", uid)
     .limit(REMINDER_LIMIT)
@@ -873,7 +873,7 @@ export async function listMyCalendarReminders(
 ): Promise<CalendarReminderItem[]> {
   if (!uid) return [];
   const settings = await getCalendarSettings();
-  const snap = await getAdminDb()
+  const snap = await getAdminDbRaw()
     .collection(CALENDAR_REMINDERS_COLLECTION)
     .where("uid", "==", uid)
     .limit(REMINDER_LIMIT)
@@ -888,7 +888,7 @@ export async function listMyCalendarReminders(
   const ids = [...new Set(reminderRows.map((row) => row.eventId).filter(Boolean))];
   if (ids.length === 0) return [];
 
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const eventMap = new Map<string, CalendarEventRecord>();
   for (let i = 0; i < ids.length; i += GET_ALL_CHUNK) {
     const chunk = ids.slice(i, i + GET_ALL_CHUNK);

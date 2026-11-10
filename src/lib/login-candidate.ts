@@ -1,6 +1,6 @@
 import "server-only";
 import type { DocumentReference, DocumentData } from "firebase-admin/firestore";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDbRaw } from "@/lib/firebase-admin";
 import { getCurrentPeriod } from "@/lib/settings-server";
 import { getRosterEntry, isActiveEntry } from "@/lib/roster";
 import { getRoleEnabled, isRoleEnabled } from "@/lib/role-settings";
@@ -31,7 +31,7 @@ export async function findAccountBy(
   field: "email" | "account",
   value: string
 ): Promise<AccountHit | null> {
-  const snapshot = await getAdminDb()
+  const snapshot = await getAdminDbRaw()
     .collection(USER_COLLECTION)
     .where(field, "==", value)
     .limit(1)
@@ -100,7 +100,7 @@ export async function loadRoleContext(
   uid: string,
   role: UserRole
 ): Promise<{ account: AccountHit; entry: Record<string, unknown> } | null> {
-  const snap = await getAdminDb().collection(USER_COLLECTION).doc(uid).get();
+  const snap = await getAdminDbRaw().collection(USER_COLLECTION).doc(uid).get();
   if (!snap.exists) return null;
   const data = snap.data()!;
   if (!isAccountActive(data)) return null;

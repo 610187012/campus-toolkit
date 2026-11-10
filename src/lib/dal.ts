@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDbRaw } from "@/lib/firebase-admin";
 import { getSession, SessionPayload } from "@/lib/server-session";
 import { isJtiRevoked } from "@/lib/revocation";
 import { getClientIp } from "@/lib/audit";
@@ -51,7 +51,7 @@ async function loadAuthzDocs(session: SessionPayload): Promise<AuthzDocs> {
     session.tokenVersion,
     epoch,
     async () => {
-      const snap = await getAdminDb()
+      const snap = await getAdminDbRaw()
         .collection(USER_COLLECTION)
         .doc(session.uid)
         .get();

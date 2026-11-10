@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomBytes } from "crypto";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDbRaw } from "@/lib/firebase-admin";
 import { UserRole } from "@/types/users";
 
 /**
@@ -63,7 +63,7 @@ export async function createPasswordResetToken(
   const now = Date.now();
   const expiresAt = now + PASSWORD_RESET_TTL_MS;
 
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const col = db.collection(COLLECTION);
   const batch = db.batch();
   const touched = new Set<string>();
@@ -105,7 +105,7 @@ export async function inspectPasswordResetToken(
   const normalized = normalizeToken(token);
   if (!normalized) return { status: "invalid" };
 
-  const snap = await getAdminDb()
+  const snap = await getAdminDbRaw()
     .collection(COLLECTION)
     .doc(sha256(normalized))
     .get();
@@ -130,7 +130,7 @@ export async function consumePasswordResetToken(
   const normalized = normalizeToken(token);
   if (!normalized) return { status: "invalid" };
 
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const ref = db.collection(COLLECTION).doc(sha256(normalized));
 
   return db.runTransaction(async (tx) => {

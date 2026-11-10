@@ -19,6 +19,9 @@ import {
   recordWrites,
   recordDeletes,
 } from "@/lib/read-stats";
+import { createScopedDb } from "@/lib/module-db-scope";
+import { declaredCollections } from "@/lib/module-db-policy";
+import { currentModuleValue } from "@/lib/module-context";
 
 let adminApp: App | null = null;
 let adminDb: Firestore | null = null;
@@ -334,11 +337,24 @@ function instrumentDb(db: Firestore): Firestore {
   }) as Firestore;
 }
 
-export function getAdminDb(): Firestore {
+/** 宿主內部使用：永遠回傳未套用模組集合限制的 AdminDb */
+export function getAdminDbRaw(): Firestore {
   if (adminDb) return adminDb;
   const raw = getFirestore(ensureAdminApp());
   adminDb = isReadStatsEnabled() ? instrumentDb(raw) : raw;
   return adminDb;
+}
+
+/**
+ * 對外（含模組）使用的 AdminDb。
+ * 在模組 API context 內會自動套用 `scopedDb`：只允許該模組宣告的集合，
+ * 核心個資集合唯讀；宿主內部函式請改用 `getAdminDbRaw()`。
+ */
+export function getAdminDb(): Firestore {
+  const raw = getAdminDbRaw();
+  const moduleValue = currentModuleValue();
+  if (!moduleValue) return raw;
+  return createScopedDb(raw, moduleValue, declaredCollections(moduleValue));
 }
 
 export function getAdminAuth(): Auth {

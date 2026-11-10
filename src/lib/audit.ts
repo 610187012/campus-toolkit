@@ -1,5 +1,5 @@
 import "server-only";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDbRaw } from "@/lib/firebase-admin";
 import type { GeneratedActivityAction } from "@/lib/activity-actions.generated";
 
 export type ActivityAction =
@@ -107,7 +107,7 @@ export function getClientIp(request: {
 
 export async function logActivity(entry: ActivityEntry): Promise<void> {
   try {
-    await getAdminDb().collection("activityLog").add({
+    await getAdminDbRaw().collection("activityLog").add({
       userId: entry.userId || "",
       role: entry.role || "",
       action: entry.action,

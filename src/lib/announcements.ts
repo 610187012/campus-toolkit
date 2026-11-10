@@ -1,6 +1,6 @@
 import "server-only";
 import type { DocumentReference } from "firebase-admin/firestore";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDbRaw } from "@/lib/firebase-admin";
 import { cachedRead, cachedSettingDoc, invalidateReadCache } from "@/lib/read-cache";
 import { invalidateAdminListCache } from "@/lib/list-cache";
 import { getCurrentPeriod } from "@/lib/settings-server";
@@ -89,7 +89,7 @@ function resolveExpireAt(
 export async function getAnnouncementSettings(): Promise<AnnouncementSettings> {
   try {
     const raw = await cachedSettingDoc(ANNOUNCEMENT_SETTINGS_DOC_ID, async () => {
-      const snap = await getAdminDb()
+      const snap = await getAdminDbRaw()
         .collection("settings")
         .doc(ANNOUNCEMENT_SETTINGS_DOC_ID)
         .get();
@@ -178,7 +178,7 @@ export async function publishFromModule(input: PublishFromModuleInput): Promise<
     updatedAt: now,
   };
 
-  const ref = await getAdminDb()
+  const ref = await getAdminDbRaw()
     .collection(ANNOUNCEMENTS_COLLECTION)
     .add(announcementToFirestore(record));
   invalidateAnnouncementsCache();
@@ -210,7 +210,7 @@ export async function updateAnnouncement(
     status?: "published" | "archived";
   }
 ): Promise<{ deleted: boolean }> {
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const ref = db.collection(ANNOUNCEMENTS_COLLECTION).doc(id);
   const snap = await ref.get();
   if (!snap.exists) throw new Error("查無此公告");
@@ -295,7 +295,7 @@ export async function updateFromModule(
     throw new Error("updateFromModule: sourceRef 必填（更新／撤回需可定位來源）");
   }
 
-  const snap = await getAdminDb()
+  const snap = await getAdminDbRaw()
     .collection(ANNOUNCEMENTS_COLLECTION)
     .where("sourceModule", "==", sourceModule)
     .where("sourceRef", "==", sourceRef)
@@ -349,7 +349,7 @@ export async function batchArchiveAnnouncements(
     const deleted = await batchDeleteAnnouncementsHard(unique);
     return { archived: 0, deleted };
   }
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   // getAll 分塊 200：先確認存在再批次 update（update 對不存在的文件會使整批失敗）
   const existing: string[] = [];
   for (let i = 0; i < unique.length; i += 200) {
@@ -382,7 +382,7 @@ export async function batchArchiveAnnouncements(
 export async function batchDeleteAnnouncementsHard(ids: string[]): Promise<number> {
   const unique = [...new Set(ids)].slice(0, BATCH_IDS_MAX);
   if (unique.length === 0) return 0;
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const reminderIds: string[] = [];
   for (let i = 0; i < unique.length; i += IN_QUERY_CHUNK) {
     const snap = await db
@@ -402,7 +402,7 @@ export async function batchDeleteAnnouncementsHard(ids: string[]): Promise<numbe
 
 /** 真實刪除單則公告及其所有個人提醒文件（下架原則＝真實刪除時使用） */
 async function hardDeleteAnnouncement(id: string): Promise<void> {
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const remSnap = await db
     .collection(ANNOUNCEMENT_REMINDERS_COLLECTION)
     .where("announcementId", "==", id)
@@ -414,7 +414,7 @@ async function hardDeleteAnnouncement(id: string): Promise<void> {
   await deleteInBatches(db, refs);
 }
 
-async function deleteInBatches(db: ReturnType<typeof getAdminDb>, refs: DocumentReference[]) {
+async function deleteInBatches(db: ReturnType<typeof getAdminDbRaw>, refs: DocumentReference[]) {
   for (let i = 0; i < refs.length; i += DELETE_BATCH_LIMIT) {
     const batch = db.batch();
     refs.slice(i, i + DELETE_BATCH_LIMIT).forEach((ref) => batch.delete(ref));
@@ -429,7 +429,7 @@ async function deleteInBatches(db: ReturnType<typeof getAdminDb>, refs: Document
  * 由管理端清單載入時呼叫（settings.policies.hardDeleteExpired=true 才會執行）。
  */
 export async function purgeDownAnnouncements(): Promise<number> {
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const now = Date.now();
   const ids = new Set<string>();
   const archived = await db
@@ -475,7 +475,7 @@ export async function listAdminAnnouncements(
   options?: { includeArchived?: boolean }
 ): Promise<AdminAnnouncementRow[]> {
   const settings = await getAnnouncementSettings();
-  const snap = await getAdminDb()
+  const snap = await getAdminDbRaw()
     .collection(ANNOUNCEMENTS_COLLECTION)
     .limit(ADMIN_LIST_LIMIT)
     .get();
@@ -502,7 +502,7 @@ export async function countAnnouncementsByStatus(): Promise<{
   published: number;
   archived: number;
 }> {
-  const col = getAdminDb().collection(ANNOUNCEMENTS_COLLECTION);
+  const col = getAdminDbRaw().collection(ANNOUNCEMENTS_COLLECTION);
   const [publishedSnap, archivedSnap] = await Promise.all([
     col.where("status", "==", "published").count().get(),
     col.where("status", "==", "archived").count().get(),
@@ -530,7 +530,7 @@ export async function listInboxAnnouncements(
   const cacheKey = `${INBOX_CACHE_PREFIX}${role}:${classCode || "*"}`;
   return cachedRead(cacheKey, INBOX_TTL_MS, async () => {
     const settings = await getAnnouncementSettings();
-    const snap = await getAdminDb()
+    const snap = await getAdminDbRaw()
       .collection(ANNOUNCEMENTS_COLLECTION)
       .orderBy("publishAt", "desc")
       .limit(INBOX_LIMIT)
@@ -600,7 +600,7 @@ export async function listSurfaceAnnouncements(
   const cacheKey = `${SURFACE_CACHE_PREFIX}${surface}:${role ?? "guest"}:${classCode || "*"}:${take}`;
   return cachedRead(cacheKey, INBOX_TTL_MS, async () => {
     const settings = await getAnnouncementSettings();
-    const snap = await getAdminDb()
+    const snap = await getAdminDbRaw()
       .collection(ANNOUNCEMENTS_COLLECTION)
       .orderBy("publishAt", "desc")
       .limit(SURFACE_FETCH_LIMIT)
@@ -666,7 +666,7 @@ export async function listArchiveAnnouncements(
   const cacheKey = `${ARCHIVE_CACHE_PREFIX}${role ?? "guest"}:${classCode || "*"}`;
   return cachedRead(cacheKey, INBOX_TTL_MS, async () => {
     const settings = await getAnnouncementSettings();
-    const snap = await getAdminDb()
+    const snap = await getAdminDbRaw()
       .collection(ANNOUNCEMENTS_COLLECTION)
       .orderBy("publishAt", "desc")
       .limit(ARCHIVE_LIMIT)
@@ -715,7 +715,7 @@ export async function listArchiveAnnouncements(
 
 /** 讀取單則公告（管理端編輯用） */
 export async function getAnnouncement(id: string): Promise<AnnouncementRecord | null> {
-  const snap = await getAdminDb().collection(ANNOUNCEMENTS_COLLECTION).doc(id).get();
+  const snap = await getAdminDbRaw().collection(ANNOUNCEMENTS_COLLECTION).doc(id).get();
   if (!snap.exists) return null;
   return readAnnouncementRecord(id, snap.data());
 }
@@ -783,7 +783,7 @@ export async function saveAnnouncementSettings(input: {
     surfaces,
     policies,
   };
-  await getAdminDb()
+  await getAdminDbRaw()
     .collection("settings")
     .doc(ANNOUNCEMENT_SETTINGS_DOC_ID)
     .set(next, { merge: false });
@@ -814,7 +814,7 @@ export async function toggleAnnouncementReminder(
   if (!ann || !isAnnouncementReadable(ann)) {
     throw new Error("公告不存在或已無法提醒");
   }
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const ref = db
     .collection(ANNOUNCEMENT_REMINDERS_COLLECTION)
     .doc(reminderDocId(announcementId, uid));
@@ -834,7 +834,7 @@ export async function toggleAnnouncementReminder(
 /** 使用者已設定提醒的公告 id 清單（不做跨請求快取：提醒變動頻繁） */
 export async function listMyReminderIds(uid: string): Promise<string[]> {
   if (!uid) return [];
-  const snap = await getAdminDb()
+  const snap = await getAdminDbRaw()
     .collection(ANNOUNCEMENT_REMINDERS_COLLECTION)
     .where("uid", "==", uid)
     .limit(REMINDER_LIMIT)
@@ -853,7 +853,7 @@ export async function listMyReminders(
 ): Promise<AnnouncementReminderItem[]> {
   if (!uid) return [];
   const settings = await getAnnouncementSettings();
-  const snap = await getAdminDb()
+  const snap = await getAdminDbRaw()
     .collection(ANNOUNCEMENT_REMINDERS_COLLECTION)
     .where("uid", "==", uid)
     .limit(REMINDER_LIMIT)
@@ -868,7 +868,7 @@ export async function listMyReminders(
   const ids = [...new Set(reminderRows.map((row) => row.announcementId).filter(Boolean))];
   if (ids.length === 0) return [];
 
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const snaps = await db.getAll(
     ...ids.map((id) => db.collection(ANNOUNCEMENTS_COLLECTION).doc(id))
   );

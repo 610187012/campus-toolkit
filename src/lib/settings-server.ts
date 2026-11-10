@@ -1,5 +1,5 @@
 import "server-only";
-import { getAdminDb, FieldValue } from "@/lib/firebase-admin";
+import { getAdminDbRaw, FieldValue } from "@/lib/firebase-admin";
 import {
   clampCacheTtlSeconds,
   defaultSettings,
@@ -48,7 +48,7 @@ export async function getCacheEpoch(): Promise<number> {
  * 成功後同步清除本程序的設定快取（立即看到新 epoch）。
  */
 export async function bumpCacheEpoch(): Promise<void> {
-  await getAdminDb()
+  await getAdminDbRaw()
     .collection(SETTINGS_COLLECTION)
     .doc(SETTINGS_DOC_ID)
     .set({ [CACHE_EPOCH_FIELD]: FieldValue.increment(1) }, { merge: true });
@@ -65,7 +65,7 @@ export async function readSystemDoc(): Promise<Record<string, unknown> | null> {
   if (systemDocCache && now - systemDocCache.at < CACHE_TTL_MS) return systemDocCache.data;
 
   try {
-    const snap = await getAdminDb()
+    const snap = await getAdminDbRaw()
       .collection(SETTINGS_COLLECTION)
       .doc(SETTINGS_DOC_ID)
       .get();

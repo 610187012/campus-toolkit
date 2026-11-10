@@ -1,6 +1,6 @@
 import "server-only";
 import type { DocumentData } from "firebase-admin/firestore";
-import { FieldValue, getAdminDb, getAdminStorageBucket } from "@/lib/firebase-admin";
+import { FieldValue, getAdminDbRaw, getAdminStorageBucket } from "@/lib/firebase-admin";
 import { cachedSettingDoc, invalidateReadCache } from "@/lib/read-cache";
 import { SETTINGS_COLLECTION, readSystemDoc } from "@/lib/settings-server";
 import { CLASSES_DOC_ID, readSchoolClasses, type SchoolClassesContext } from "@/types/school-classes";
@@ -47,7 +47,7 @@ export async function getStudentPersonalInfoSettings(
   const docId = personalInfoSettingsDocId(period);
   try {
     const raw = await cachedSettingDoc(docId, async () => {
-      const snap = await getAdminDb().collection(SETTINGS_COLLECTION).doc(docId).get();
+      const snap = await getAdminDbRaw().collection(SETTINGS_COLLECTION).doc(docId).get();
       return snap.exists ? snap.data() ?? null : null;
     });
     return readStudentPersonalInfoSettings(raw);
@@ -62,7 +62,7 @@ export async function saveStudentPersonalInfoSettings(
   settings: StudentPersonalInfoSettings
 ): Promise<void> {
   const docId = personalInfoSettingsDocId(period);
-  await getAdminDb().collection(SETTINGS_COLLECTION).doc(docId).set({
+  await getAdminDbRaw().collection(SETTINGS_COLLECTION).doc(docId).set({
     ...settings,
     academicYear: period.academicYear,
     semester: period.semester,
@@ -73,7 +73,7 @@ export async function saveStudentPersonalInfoSettings(
 
 export async function getStudentPersonalInfoTargetOptions(): Promise<StudentPersonalInfoTargetOptions> {
   try {
-    const db = getAdminDb();
+    const db = getAdminDbRaw();
     const [classesSnap, profileSnap] = await Promise.all([
       cachedSettingDoc(CLASSES_DOC_ID, () =>
         db.collection(SETTINGS_COLLECTION).doc(CLASSES_DOC_ID).get()
@@ -123,7 +123,7 @@ export interface StudentPersonalInfoListRow {
  * 使用 Firestore count 聚合：每個計數僅 1 次讀取、不載入任何文件內容。
  */
 export async function countStudentPersonalInfoByTerm(period: SchoolPeriod): Promise<number> {
-  const snap = await getAdminDb()
+  const snap = await getAdminDbRaw()
     .collection(PERSONAL_INFO_COLLECTION)
     .where("academicYear", "==", period.academicYear)
     .where("semester", "==", period.semester)
@@ -145,7 +145,7 @@ export async function loadStudentPersonalInfoClassList(
   classCode: string
 ): Promise<StudentPersonalInfoListRow[]> {
   if (!classCode) return [];
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const rosterSnap = await db
     .collection(rosterCollection("student"))
     .where("academicYear", "==", period.academicYear)
@@ -203,7 +203,7 @@ export async function getStudentPersonalInfo(
   uid: string,
   period: SchoolPeriod
 ): Promise<StudentPersonalInfoRecord> {
-  const snap = await getAdminDb()
+  const snap = await getAdminDbRaw()
     .collection(PERSONAL_INFO_COLLECTION)
     .doc(studentPersonalInfoDocId(uid, period))
     .get();
@@ -214,7 +214,7 @@ export async function getStudentPersonalInfo(
 
 /** 依登入者 uid 取得已填寫的各學期個人資料（有界於單一使用者，不載入全校資料）。 */
 export async function getStudentPersonalInfoEntries(uid: string): Promise<StudentPersonalInfoEntry[]> {
-  const snapshot = await getAdminDb()
+  const snapshot = await getAdminDbRaw()
     .collection(PERSONAL_INFO_COLLECTION)
     .where("uid", "==", uid)
     .get();
@@ -249,7 +249,7 @@ export async function getStudentPersonalIdentity(
   uid: string,
   legacyEntries: StudentPersonalInfoEntry[]
 ): Promise<StudentPersonalIdentityFields> {
-  const snapshot = await getAdminDb()
+  const snapshot = await getAdminDbRaw()
     .collection(STUDENT_PERSONAL_IDENTITY_COLLECTION)
     .doc(uid)
     .get();
@@ -274,7 +274,7 @@ export async function saveStudentPersonalIdentity(
   uid: string,
   fields: StudentPersonalIdentityFields
 ): Promise<void> {
-  await getAdminDb()
+  await getAdminDbRaw()
     .collection(STUDENT_PERSONAL_IDENTITY_COLLECTION)
     .doc(uid)
     .set({ uid, ...fields, updatedAt: Date.now() });
@@ -285,7 +285,7 @@ export async function saveStudentPersonalInfo(
   period: SchoolPeriod,
   fields: StudentPersonalInfoTermFields
 ): Promise<void> {
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const personalInfoRef = db.collection(PERSONAL_INFO_COLLECTION).doc(studentPersonalInfoDocId(uid, period));
   const identityRef = db.collection(STUDENT_PERSONAL_IDENTITY_COLLECTION).doc(uid);
   await db.runTransaction(async (transaction) => {
@@ -408,7 +408,7 @@ async function writeStudentPersonalPhotoBytes(
   bytes: Buffer
 ): Promise<void> {
   if (metadata.backend === "firestore") {
-    await getAdminDb()
+    await getAdminDbRaw()
       .collection(STUDENT_PERSONAL_PHOTO_COLLECTION)
       .doc(studentPersonalPhotoDocId(uid, period, kind))
       .set({
@@ -436,7 +436,7 @@ async function removeStudentPersonalPhotoBytes(
   if (metadata.backend === "firestore") {
     const docId = firestorePointerToPhotoDocId(metadata.objectPath);
     if (!docId) return;
-    await getAdminDb().collection(STUDENT_PERSONAL_PHOTO_COLLECTION).doc(docId).delete();
+    await getAdminDbRaw().collection(STUDENT_PERSONAL_PHOTO_COLLECTION).doc(docId).delete();
     return;
   }
   if (
@@ -457,7 +457,7 @@ export async function readStudentPersonalPhotoBytes(
   if (metadata.backend === "firestore") {
     const docId = firestorePointerToPhotoDocId(metadata.objectPath);
     if (!docId) throw new Error("證件照指標無效");
-    const snap = await getAdminDb().collection(STUDENT_PERSONAL_PHOTO_COLLECTION).doc(docId).get();
+    const snap = await getAdminDbRaw().collection(STUDENT_PERSONAL_PHOTO_COLLECTION).doc(docId).get();
     const bytes = snap.exists
       ? ((snap.data()?.bytes as Uint8Array | undefined) ?? null)
       : null;
@@ -502,7 +502,7 @@ export async function saveStudentPersonalPhoto(
   await writeStudentPersonalPhotoBytes(uid, period, kind, metadata, bytes);
 
   try {
-    await getAdminDb()
+    await getAdminDbRaw()
       .collection(PERSONAL_INFO_COLLECTION)
       .doc(studentPersonalInfoDocId(uid, period))
       .set({
@@ -569,7 +569,7 @@ export async function deleteStudentPersonalPhotoObjects(objectPaths: string[]): 
         ),
       ];
       if (ids.length > 0) {
-        const db = getAdminDb();
+        const db = getAdminDbRaw();
         const batch = db.batch();
         for (const docId of ids) {
           batch.delete(db.collection(STUDENT_PERSONAL_PHOTO_COLLECTION).doc(docId));

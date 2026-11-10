@@ -1,7 +1,5 @@
 import "server-only";
-import fs from "node:fs";
-import path from "node:path";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDbRaw } from "@/lib/firebase-admin";
 import {
   CORE_READ_ONLY_COLLECTIONS,
   HOST_FACILITY_COLLECTIONS,
@@ -9,6 +7,7 @@ import {
   createScopedDb,
   isCoreReadOnlyCollection,
 } from "@/lib/module-db-scope";
+import { declaredCollections } from "@/lib/module-db-policy";
 
 /**
  * scopedDb：選用模組的 runtime Firestore 集合管制（P0-2 v2）。
@@ -24,42 +23,15 @@ import {
  * db.collection("anythingElse")…      // 未宣告 → 拋錯
  * ```
  *
- * - 集合宣告來源＝`src/modules/<value>/module.json` 的 `dataCollections`。
- * - 核心個資集合（名冊四表＋學生個人資料三表）唯讀；寫入由主程式管理端負責。
- * - 設施集合（announcements／calendarEvents）不可直接讀寫，一律走掛勾函式。
- * - 保留集合（users／settings／activityLog／revokedJTIs）一律拒絕。
- * - 讀取 manifest 失敗＝只允許空集合（fail-safe）。
- * - v1 的 `getAdminDb()` 仍可用（E／F／G 尚未遷移），但市集審核與掃描器會提示遷移。
+ * 注意：`firebase-admin` 的 `getAdminDb()` 在模組 API context 內會**自動**
+ * 套用同樣的 scopedDb；宿主內部函式一律用 `getAdminDbRaw()`。
+ * 頁面（server component）目前不在 runtime wrapper context 內，仍需自行使用
+ * `scopedDb` 或等頁面層 wrapper 落地。
  */
 
-const cache = new Map<string, Set<string>>();
-
-function declaredCollections(moduleValue: string): Set<string> {
-  const cached = cache.get(moduleValue);
-  if (cached) return cached;
-  const result = new Set<string>();
-  try {
-    const manifestPath = path.join(process.cwd(), "src", "modules", moduleValue, "module.json");
-    if (fs.existsSync(manifestPath)) {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8").replace(/^﻿/, "")) as {
-        dataCollections?: unknown;
-      };
-      if (Array.isArray(manifest.dataCollections)) {
-        for (const name of manifest.dataCollections) {
-          if (typeof name === "string" && name) result.add(name);
-        }
-      }
-    }
-  } catch {
-    // manifest 讀不到＝不允許任何模組自有集合（fail-safe）
-  }
-  cache.set(moduleValue, result);
-  return result;
-}
-
 /** 取得受限的 AdminDb（見檔頭政策） */
-export function scopedDb(moduleValue: string): ReturnType<typeof getAdminDb> {
-  return createScopedDb(getAdminDb(), moduleValue, declaredCollections(moduleValue));
+export function scopedDb(moduleValue: string): ReturnType<typeof getAdminDbRaw> {
+  return createScopedDb(getAdminDbRaw(), moduleValue, declaredCollections(moduleValue));
 }
 
 /** 該模組是否被允許存取某集合（供測試與除錯；核心集合回 true，但僅唯讀） */

@@ -1,5 +1,5 @@
 import "server-only";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDbRaw } from "@/lib/firebase-admin";
 import { hashPassword } from "@/lib/auth";
 import {
   ACCOUNT_FORMAT_MESSAGE,
@@ -191,7 +191,7 @@ export async function findAccountByKey(key: string): Promise<{
   name: string;
   status: AccountStatus;
 } | null> {
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const raw = text(key, MAX_TEXT);
   if (!raw) return null;
 
@@ -241,7 +241,7 @@ export async function checkAccountConflictDirect(
   roster: RosterData,
   options: { role?: RosterRole; period?: SchoolPeriod; excludeUid?: string } = {}
 ): Promise<string | null> {
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const users = db.collection(USER_COLLECTION);
 
   // 電子郵件／帳號：各一筆等值查詢；limit(2) 保證「排除自己後仍有他人」必被看見
@@ -347,7 +347,7 @@ export async function getRosterEntry(
   role: RosterRole,
   period: SchoolPeriod
 ): Promise<Record<string, unknown> | null> {
-  const snap = await getAdminDb()
+  const snap = await getAdminDbRaw()
     .collection(rosterCollection(role))
     .doc(rosterEntryId(uid, period))
     .get();
@@ -361,7 +361,7 @@ export async function loadPeriodEntries(
   period: SchoolPeriod,
   role: RosterRole
 ): Promise<Map<string, Record<string, unknown>>> {
-  const snapshot = await getAdminDb()
+  const snapshot = await getAdminDbRaw()
     .collection(rosterCollection(role))
     .where("academicYear", "==", period.academicYear)
     .where("semester", "==", period.semester)
@@ -427,7 +427,7 @@ export async function syncEntryIdentity(
   period: SchoolPeriod,
   patch: { email?: string; account?: string; name?: string }
 ): Promise<void> {
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const roles: RosterRole[] = ["student", "parent", "staff", "admin"];
   const refs = roles.map((role) =>
     db.collection(rosterCollection(role)).doc(rosterEntryId(uid, period))
@@ -472,7 +472,7 @@ export async function moveEntriesUid(
   options?: { assumeTargetExists?: boolean }
 ): Promise<number> {
   if (!fromUid || !toUid || fromUid === toUid) return 0;
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   if (
     !options?.assumeTargetExists &&
     !(await db.collection(USER_COLLECTION).doc(toUid).get()).exists
@@ -528,7 +528,7 @@ export async function linkOrphanEntries(
   allowSuper: boolean
 ): Promise<number> {
   if (!target.uid || (!target.email && !target.account)) return 0;
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
 
   // 1) 以辨識鍵找候選條目（email／account 各查一次，同文件去重）
   const seen = new Set<string>();
@@ -596,7 +596,7 @@ export async function linkOrphanEntriesBatch(
 ): Promise<number> {
   const active = targets.filter((item) => item.uid && (item.email || item.account));
   if (active.length === 0) return 0;
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
 
   // 辨識鍵 → 目標（辨識鍵全站唯一；重複時保留先出現者）
   const byEmail = new Map<string, LinkTarget>();
@@ -748,7 +748,7 @@ export interface AdminGuardContext {
 
 /** 載入管理員守門上下文（讀 1 次當期管理員名冊＋分塊 getAll 使用者帳號） */
 export async function loadAdminGuardContext(): Promise<AdminGuardContext> {
-  const db = getAdminDb();
+  const db = getAdminDbRaw();
   const period = await getCurrentPeriod();
   const snapshot = await db
     .collection(rosterCollection("admin"))

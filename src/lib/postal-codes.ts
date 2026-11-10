@@ -1,5 +1,5 @@
 import "server-only";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDbRaw } from "@/lib/firebase-admin";
 import { cachedSettingDoc, invalidateReadCache } from "@/lib/read-cache";
 import { SETTINGS_COLLECTION } from "@/lib/settings-server";
 import {
@@ -11,7 +11,7 @@ import {
 export async function getPostalCodeOptions(): Promise<PostalCodeOption[]> {
   try {
     const raw = await cachedSettingDoc(POSTAL_CODES_DOC_ID, async () => {
-      const snap = await getAdminDb().collection(SETTINGS_COLLECTION).doc(POSTAL_CODES_DOC_ID).get();
+      const snap = await getAdminDbRaw().collection(SETTINGS_COLLECTION).doc(POSTAL_CODES_DOC_ID).get();
       return snap.exists ? snap.data() ?? null : null;
     });
     return readPostalCodeOptions(raw);
@@ -22,7 +22,7 @@ export async function getPostalCodeOptions(): Promise<PostalCodeOption[]> {
 }
 
 export async function savePostalCodeOptions(options: PostalCodeOption[]): Promise<void> {
-  await getAdminDb().collection(SETTINGS_COLLECTION).doc(POSTAL_CODES_DOC_ID).set({
+  await getAdminDbRaw().collection(SETTINGS_COLLECTION).doc(POSTAL_CODES_DOC_ID).set({
     options,
     updatedAt: Date.now(),
   });
