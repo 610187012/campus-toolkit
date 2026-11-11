@@ -429,6 +429,10 @@ function BuiltinRow({
           <span className="mt-0.5 block">
             <Badge text={FEATURE_MODULE_STATUS_LABELS[item.status]} className="text-t3" />
           </span>
+          <span className="mt-0.5 block text-xs text-t3">
+            作者：{item.author.author || item.value}
+            {item.marketName && item.marketName !== item.label ? `｜市集名稱：${item.marketName}` : ""}
+          </span>
         </td>
         <RoleCells item={item} switches={switches} disabled={disabled} disabledTitle={disabledTitle} onToggle={onToggleRole} />
         <td className="px-3 py-2 whitespace-nowrap text-right">

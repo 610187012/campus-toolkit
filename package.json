@@ -33,6 +33,7 @@
     "module:sandbox-g-parent-staff-test": "node scripts/test-sandbox-g-parent-staff.mjs",
     "module:sandbox-multipart-test": "node scripts/test-sandbox-multipart.mjs",
     "module:sandbox-limits-test": "node scripts/test-sandbox-limits.mjs",
+    "module:card-label-test": "node scripts/test-module-card-labels.mjs",
     "module:materialize-test": "node scripts/test-materialize-modules.mjs",
     "module:capability-test": "node scripts/test-module-capability-scan.mjs",
     "module:install": "node scripts/module-cli.mjs install",
