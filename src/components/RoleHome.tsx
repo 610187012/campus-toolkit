@@ -17,6 +17,7 @@ import AnnouncementSurface from "@/components/AnnouncementSurface";
 import CalendarSurface from "@/components/CalendarSurface";
 import { fetchSettings } from "@/lib/settings-client";
 import { FEATURE_MODULES } from "@/types/feature-modules";
+import { moduleCardLabels } from "@/lib/module-card-label";
 
 const accountModule = {
   icon: (
@@ -155,8 +156,10 @@ export default function RoleHome({ role }: { role: Exclude<UserRole, "admin"> })
       : []),
   ];
   // 選用（外掛）功能模組卡：visibleModules 已含 provides＋顯示開關＋總開關（0.392）；
-  // href 取該身分的入口（掃描器由 routes 映射的 roleHrefs）；無此身分頁面者不出卡
-  const optionalCards =
+  // href 取該身分的入口（掃描器由 routes 映射的 roleHrefs）；無此身分頁面者不出卡。
+  // 同名模組（例如兩個「自主學習計畫」不同作者版本）自動加作者名區分；
+  // 只有一個同名模組時維持乾淨的功能名稱。
+  const optionalItems =
     visibleModules === null
       ? []
       : FEATURE_MODULES.filter(
@@ -164,12 +167,14 @@ export default function RoleHome({ role }: { role: Exclude<UserRole, "admin"> })
             item.kind === "optional" &&
             visibleModules.includes(item.value) &&
             typeof item.roleHrefs?.[role] === "string"
-        ).map((item) => ({
-          icon: <ModuleIcon value={item.value} />,
-          label: item.label,
-          id: item.value,
-          href: item.roleHrefs?.[role] as string,
-        }));
+        );
+  const optionalLabels = moduleCardLabels(optionalItems);
+  const optionalCards = optionalItems.map((item, index) => ({
+    icon: <ModuleIcon value={item.value} />,
+    label: optionalLabels[index],
+    id: item.value,
+    href: item.roleHrefs?.[role] as string,
+  }));
 
   // 被指派管理且為內建模組（如行事曆）：提供直接進入管理頁的卡片
   const managementCards = FEATURE_MODULES.filter(

@@ -74,6 +74,8 @@ export interface FeatureModuleMeta {
   /** 模組代碼（選用模組啟用狀態欄位 `featureModulesEnabled` 的鍵） */
   value: string;
   label: string;
+  /** 市集卡片名稱（選填；未設定時與 label 相同） */
+  marketName?: string;
   kind: FeatureModuleKind;
   status: FeatureModuleStatus;
   description: string;

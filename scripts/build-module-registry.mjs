@@ -545,6 +545,9 @@ function renderFeatureFile(manifests) {
       "  {",
       `    value: ${JSON.stringify(m.value)},`,
       `    label: ${JSON.stringify(m.label)},`,
+      ...(isString(m.marketName) && m.marketName.trim()
+        ? [`    marketName: ${JSON.stringify(m.marketName.trim())},`]
+        : []),
       '    kind: "optional",',
       `    status: ${JSON.stringify(m.status)},`,
       `    description: ${JSON.stringify(m.description)},`,
