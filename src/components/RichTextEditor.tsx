@@ -226,6 +226,10 @@ export interface RichTextEditorProps {
   placeholder?: string;
   maxLength?: number;
   ariaLabel?: string;
+  /** 額外 class（套用至編輯器容器） */
+  className?: string;
+  /** 額外樣式（套用至編輯器容器） */
+  style?: React.CSSProperties;
   /** 精簡工具列與高度（表格內逐週意見等狹窄欄位用） */
   compact?: boolean;
 }
@@ -241,6 +245,8 @@ export function RichTextEditor({
   placeholder = "請輸入內容",
   maxLength = 600,
   ariaLabel,
+  className,
+  style,
   compact = false,
 }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -374,12 +380,13 @@ export function RichTextEditor({
           suppressContentEditableWarning
           className={`input-theme w-full px-3 py-2 text-sm ${
             compact ? "min-h-16" : "min-h-24"
-          } ${disabled ? "opacity-60" : ""}`}
+          } ${disabled ? "opacity-60" : ""} ${className ?? ""}`}
           style={{
             minHeight: compact ? "4rem" : "6rem",
             resize: disabled ? "none" : "both",
             overflow: "auto",
             borderRadius: 0,
+            ...style,
           }}
           onInput={handleInput}
           onPaste={handlePaste}
