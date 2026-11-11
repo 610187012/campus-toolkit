@@ -257,5 +257,5 @@ GitHub repo**（P1-10 lock-only）。模組檔案由 build 前 `scripts/material
 1. `npm run lint`（eslint + tsc）確認通過
 2. `npm run version:bump`（即 `node scripts/version.js`：依 commit 數 +1 寫入 `src/version.json`；
    `dev`/`build` **不**重算，版本號一律以已 commit 的檔案為準，各部署環境顯示才會一致）
-3. commit（訊息結尾附「版本號更新至 0.xxx」）
-4. `git push`
+3. commit（訊息結尾附「版本號更新至 0.xxx」）；0.xxx 一律採用 `version:bump` 印出的版本，不要自行推算。
+4. `git push`；需要版本標記時，tag 名稱與 commit 訊息使用同一個版本號。
