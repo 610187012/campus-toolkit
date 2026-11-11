@@ -485,3 +485,14 @@ mark {
   animation: fadeIn 0.2s ease-out;
 }
 
+/* 富文本警示色：連同內部標籤一起套用主題危險色 */
+.rich-text-danger,
+.rich-text-danger *,
+.rich-text-danger p,
+.rich-text-danger span,
+.rich-text-danger font,
+.rich-text-danger div,
+.rich-text-danger li,
+.rich-text-danger blockquote {
+  color: var(--danger) !important;
+}

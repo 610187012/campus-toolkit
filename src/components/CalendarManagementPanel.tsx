@@ -1195,7 +1195,16 @@ export default function AdminCalendarPage() {
                 </label>
                 <input
                   id="cal-title"
-                  className="flex-1 input-theme rounded px-3 py-2"
+                  className={`flex-1 input-theme rounded px-3 py-2 ${
+                    form.schoolActivity.school || form.schoolActivity.grades.length > 0
+                      ? "!text-danger"
+                      : ""
+                  }`}
+                  style={
+                    form.schoolActivity.school || form.schoolActivity.grades.length > 0
+                      ? { color: "var(--danger)" }
+                      : undefined
+                  }
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   required
@@ -1213,6 +1222,16 @@ export default function AdminCalendarPage() {
                     placeholder="請輸入行程說明（選填）"
                     maxLength={2000}
                     ariaLabel="行程說明"
+                    className={
+                      form.schoolActivity.school || form.schoolActivity.grades.length > 0
+                        ? "rich-text-danger"
+                        : ""
+                    }
+                    style={
+                      form.schoolActivity.school || form.schoolActivity.grades.length > 0
+                        ? { color: "var(--danger)" }
+                        : undefined
+                    }
                   />
                 </div>
               </div>
@@ -1449,9 +1468,9 @@ export default function AdminCalendarPage() {
               </div>
 
               <div className="flex flex-col sm:flex-row sm:items-start gap-2">
-                <span className="text-t2 sm:w-40 shrink-0">學校活動層級</span>
+                <span className="text-danger sm:w-40 shrink-0 font-medium">學校活動層級</span>
                 <div className="flex-1 space-y-2">
-                  <p className="text-t3 text-xs">用於日後衝堂比對；未勾選任何層級＝無。</p>
+                  <p className="text-danger text-xs">用於日後衝堂比對；未勾選任何層級＝無。</p>
                   <label className="inline-flex items-center gap-1.5 text-sm text-t1">
                     <input
                       type="checkbox"
